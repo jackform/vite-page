@@ -94,7 +94,7 @@ const socialLinks: SocialLink[] = [
 // 指定类型后，TS 会检查对象是否满足 Person 接口的定义
 export const person: Person = {
   id: 'p_001', // readonly，后续不能 person.id = 'xxx'
-  name: '张三',
+  name: '李四',
   title: '前端工程师 · 热爱开源',
   bio: '一个充满好奇心的开发者，喜欢探索新技术，相信代码可以改变世界。工作之余喜欢摄影和徒步，用镜头记录生活，用脚步丈量世界。目前正在深入学习 TypeScript，这是通过本页面练手的第一个 TS 项目。',
   skills,
