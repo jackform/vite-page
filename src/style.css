@@ -255,6 +255,14 @@ body {
   animation-delay: 0.4s;
 }
 
+/* ========== Pixel Icon ========== */
+.pixel-icon {
+  display: inline-block;
+  position: relative;
+  vertical-align: middle;
+  image-rendering: pixelated;
+}
+
 /* ========== Poster Entrance ========== */
 .poster-entrance {
   background: linear-gradient(135deg, #667eea, #764ba2);
@@ -280,8 +288,9 @@ body {
 }
 
 .poster-entrance-icon {
-  font-size: 40px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
 }
 
 .poster-entrance-text {

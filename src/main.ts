@@ -59,10 +59,34 @@ function renderSocialLink(link: SocialLink): string {
 }
 
 function renderPosterEntrance(): string {
+  // 8×8 像素機器人圖標
+  const robotGrid = [
+    '..####..',
+    '.##..##.',
+    '##.##.##',
+    '##....##',
+    '##.##.##',
+    '##....##',
+    '.##..##.',
+    '..####..',
+  ];
+  const s = 4;
+  const pixels: string[] = [];
+  for (let y = 0; y < robotGrid.length; y++) {
+    for (let x = 0; x < robotGrid[y].length; x++) {
+      if (robotGrid[y][x] === '#') {
+        pixels.push(
+          `<span style="position:absolute;left:${x * s}px;top:${y * s}px;width:${s}px;height:${s}px;background:#fff"></span>`,
+        );
+      }
+    }
+  }
+  const pixelRobot = `<span class="pixel-icon" style="width:${8 * s}px;height:${8 * s}px">${pixels.join('')}</span>`;
+
   return `
     <div class="card poster-entrance">
       <div class="poster-entrance-content">
-        <span class="poster-entrance-icon">🤖</span>
+        <span class="poster-entrance-icon">${pixelRobot}</span>
         <div class="poster-entrance-text">
           <h3>AI與編程探索營</h3>
           <p>適合中小學生的趣味AI及編程課程 — 點擊了解更多！</p>

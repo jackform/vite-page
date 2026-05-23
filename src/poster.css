@@ -114,6 +114,14 @@ body {
   z-index: 1;
 }
 
+/* ========== 像素圖標 ========== */
+.pixel-icon {
+  display: inline-block;
+  position: relative;
+  vertical-align: middle;
+  image-rendering: pixelated;
+}
+
 /* ========== 返回鏈接 ========== */
 .back-link {
   display: inline-flex;
@@ -166,11 +174,16 @@ body {
 }
 
 .hero-icon {
-  font-size: 72px;
+  display: flex;
+  justify-content: center;
   margin-bottom: 16px;
   position: relative;
   z-index: 1;
   animation: heroFloat 3s ease-in-out infinite;
+}
+
+.hero-icon .pixel-icon {
+  display: inline-block;
 }
 
 @keyframes heroFloat {
@@ -306,8 +319,10 @@ body {
 }
 
 .module-icon {
-  font-size: 36px;
   margin-bottom: 12px;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
 }
 
 .module-title {
