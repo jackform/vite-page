@@ -236,8 +236,11 @@ body {
 }
 
 .info-icon {
-  font-size: 28px;
+  display: flex;
+  justify-content: center;
   margin-bottom: 8px;
+  min-height: 32px;
+  align-items: center;
 }
 
 .info-label {

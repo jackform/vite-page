@@ -156,6 +156,86 @@ const pixelIcons = {
     palette: { '1': '#b388ff', '2': '#dcc8ff' },
     scale: 4,
   } as PixelIconDef,
+
+  // 8×8 日曆（📅）- 資訊欄
+  calendar: {
+    grid: [
+      '.######.',
+      '#......#',
+      '#.####.#',
+      '#.#..#.#',
+      '#.####.#',
+      '#......#',
+      '#......#',
+      '.######.',
+    ],
+    palette: { '1': '#00f0ff' },
+    scale: 4,
+  } as PixelIconDef,
+
+  // 8×8 時鐘（🕐）- 資訊欄，指針指向 10:10
+  clock: {
+    grid: [
+      '..####..',
+      '.##..##.',
+      '#.#.##.#',
+      '#..##..#',
+      '#..#...#',
+      '#..#...#',
+      '.##..##.',
+      '..####..',
+    ],
+    palette: { '1': '#00f0ff' },
+    scale: 4,
+  } as PixelIconDef,
+
+  // 8×8 地點標記（📍）- 資訊欄
+  pin: {
+    grid: [
+      '...##...',
+      '..####..',
+      '..####..',
+      '..####..',
+      '..####..',
+      '...##...',
+      '...##...',
+      '........',
+    ],
+    palette: { '1': '#00f0ff' },
+    scale: 4,
+  } as PixelIconDef,
+
+  // 8×8 人群（👥）- 資訊欄，兩個並排的人
+  people: {
+    grid: [
+      '.##..##.',
+      '#######.',
+      '.#.#.#.#',
+      '.##.##..',
+      '..###...',
+      '..#.#...',
+      '........',
+      '........',
+    ],
+    palette: { '1': '#00f0ff' },
+    scale: 4,
+  } as PixelIconDef,
+
+  // 8×8 對話框（🗣️）- 資訊欄
+  speech: {
+    grid: [
+      '..####..',
+      '.######.',
+      '##....##',
+      '##....##',
+      '.##..##.',
+      '..####..',
+      '...##...',
+      '........',
+    ],
+    palette: { '1': '#00f0ff' },
+    scale: 4,
+  } as PixelIconDef,
 };
 
 // ========== 海報資料類型 ==========
@@ -268,11 +348,11 @@ function renderHero(data: PosterData): string {
 
 function renderInfoBar(data: PosterData): string {
   const items = [
-    { icon: '📅', label: '日期', value: data.date },
-    { icon: '🕐', label: '時間', value: data.time },
-    { icon: '📍', label: '地點', value: data.location },
-    { icon: '👥', label: '對象', value: data.ageRange },
-    { icon: '🗣️', label: '語言', value: data.language },
+    { pixelIcon: pixelIcons.calendar, label: '日期', value: data.date },
+    { pixelIcon: pixelIcons.clock, label: '時間', value: data.time },
+    { pixelIcon: pixelIcons.pin, label: '地點', value: data.location },
+    { pixelIcon: pixelIcons.people, label: '對象', value: data.ageRange },
+    { pixelIcon: pixelIcons.speech, label: '語言', value: data.language },
   ];
 
   return `
@@ -281,7 +361,7 @@ function renderInfoBar(data: PosterData): string {
         .map(
           (item) => `
           <div class="info-item">
-            <div class="info-icon">${item.icon}</div>
+            <div class="info-icon">${renderPixelIcon(item.pixelIcon)}</div>
             <div class="info-label">${item.label}</div>
             <div class="info-value">${item.value}</div>
           </div>
