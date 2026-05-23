@@ -12,9 +12,11 @@ npm run preview  # Preview production build locally
 
 No test runner or linter is configured.
 
-The project deploys to GitHub Pages with `base: '/vite-page/'` configured in `vite.config.ts`. All asset paths in production are prefixed with `/vite-page/`.
+The project deploys to GitHub Pages with `base: '/vite-page/'` configured in `vite.config.ts`. All asset paths in production are prefixed with `/vite-page/`. Pushing to `main` triggers the deploy via `.github/workflows/deploy.yml`.
 
 `npm run build` runs `tsc && vite build` — `tsc` does type-checking only (no emit), while `vite build` produces the actual output in `dist/`.
+
+Only two devDependencies: `typescript` and `vite`.
 
 ## Architecture
 
@@ -27,6 +29,6 @@ A single-page personal profile rendered entirely in the browser with no framewor
 - `src/utils.ts` — helper functions (generic `groupBy`, type guards, date formatting, simulated async fetch)
 - `src/style.css` — all styles, using CSS custom properties for theming
 
-The `init()` function in `main.ts` simulates an async API call via `fetchPerson()` (which dynamic-imports `data.ts` with an artificial 800ms delay), then passes the result to `renderPage()`. There is no routing, state management, or component abstraction.
+The `init()` function in `main.ts` simulates an async API call via `fetchPerson()` — this uses dynamic `import('./data')` (not a static import) with an artificial 800ms delay, demonstrating how real async data fetching would work. The result is passed to `renderPage()`. There is no routing, state management, or component abstraction.
 
-This is a TypeScript learning/demo project — the verbose comments explaining TS concepts (type guards, function overloads, `as const`, generics) are intentional. The `ThemeMode` enum in `types.ts` is currently unused (likely a planned dark mode feature).
+This is a TypeScript learning/demo project — the verbose comments explaining TS concepts (type guards, function overloads, `as const`, generics) are intentional. Do not remove or shorten them.
