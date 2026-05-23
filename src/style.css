@@ -255,6 +255,74 @@ body {
   animation-delay: 0.4s;
 }
 
+/* ========== Poster Entrance ========== */
+.poster-entrance {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  position: relative;
+  overflow: hidden;
+}
+
+.poster-entrance::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(45deg, rgba(255, 255, 255, 0.08) 25%, transparent 25%);
+  pointer-events: none;
+}
+
+.poster-entrance-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  position: relative;
+  z-index: 1;
+}
+
+.poster-entrance-icon {
+  font-size: 40px;
+  flex-shrink: 0;
+}
+
+.poster-entrance-text {
+  flex: 1;
+}
+
+.poster-entrance-text h3 {
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+
+.poster-entrance-text p {
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.poster-entrance-btn {
+  display: inline-block;
+  padding: 10px 20px;
+  background: white;
+  color: #667eea;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  flex-shrink: 0;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.poster-entrance-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+@media (max-width: 480px) {
+  .poster-entrance-content {
+    flex-direction: column;
+    text-align: center;
+  }
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;

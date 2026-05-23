@@ -58,6 +58,21 @@ function renderSocialLink(link: SocialLink): string {
   `;
 }
 
+function renderPosterEntrance(): string {
+  return `
+    <div class="card poster-entrance">
+      <div class="poster-entrance-content">
+        <span class="poster-entrance-icon">🤖</span>
+        <div class="poster-entrance-text">
+          <h3>AI與編程探索營</h3>
+          <p>適合中小學生的趣味AI及編程課程 — 點擊了解更多！</p>
+        </div>
+        <a href="./poster.html" class="poster-entrance-btn">查看海報</a>
+      </div>
+    </div>
+  `;
+}
+
 function renderAbout(p: Person): string {
   return `
     <div class="card">
@@ -154,6 +169,7 @@ function renderPage(p: Person): void {
   app.innerHTML = `
     <div class="container">
       ${renderHeader(p)}
+      ${renderPosterEntrance()}
       ${renderAbout(p)}
       ${renderSkills(p.skills)}
       ${renderExperience(p.experience)}
