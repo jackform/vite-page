@@ -376,9 +376,12 @@ body {
 }
 
 .highlight-icon {
-  font-size: 28px;
   flex-shrink: 0;
   margin-top: 2px;
+  min-width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .highlight-text {

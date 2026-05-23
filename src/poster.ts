@@ -185,7 +185,7 @@ const pixelIcons = {
       '.##..##.',
       '..####..',
     ],
-    palette: { '1': '#00f0ff' },
+    palette: { '1': '#ffd740' },
     scale: 4,
   } as PixelIconDef,
 
@@ -201,7 +201,7 @@ const pixelIcons = {
       '...##...',
       '........',
     ],
-    palette: { '1': '#00f0ff' },
+    palette: { '1': '#e040fb' },
     scale: 4,
   } as PixelIconDef,
 
@@ -217,7 +217,7 @@ const pixelIcons = {
       '........',
       '........',
     ],
-    palette: { '1': '#00f0ff' },
+    palette: { '1': '#00e676' },
     scale: 4,
   } as PixelIconDef,
 
@@ -233,7 +233,87 @@ const pixelIcons = {
       '...##...',
       '........',
     ],
+    palette: { '1': '#b388ff' },
+    scale: 4,
+  } as PixelIconDef,
+
+  // 8×8 靶心（🎯）- 亮點
+  target: {
+    grid: [
+      '...##...',
+      '..####..',
+      '.##..##.',
+      '##.##.##',
+      '##.##.##',
+      '.##..##.',
+      '..####..',
+      '...##...',
+    ],
+    palette: { '1': '#ffd740' },
+    scale: 4,
+  } as PixelIconDef,
+
+  // 8×8 學位帽（👨‍🏫）- 亮點
+  cap: {
+    grid: [
+      '........',
+      '........',
+      '...##...',
+      '..####..',
+      '.######.',
+      '########',
+      '#......#',
+      '........',
+    ],
     palette: { '1': '#00f0ff' },
+    scale: 4,
+  } as PixelIconDef,
+
+  // 8×8 筆記本電腦（💻）- 亮點
+  laptop: {
+    grid: [
+      '.######.',
+      '##....##',
+      '##....##',
+      '##....##',
+      '.######.',
+      '..####..',
+      '..####..',
+      '........',
+    ],
+    palette: { '1': '#e040fb' },
+    scale: 4,
+  } as PixelIconDef,
+
+  // 8×8 證書（📜）- 亮點，帶印章
+  certificate: {
+    grid: [
+      '.######.',
+      '#......#',
+      '#..##..#',
+      '#.####.#',
+      '#..##..#',
+      '#......#',
+      '.######.',
+      '........',
+    ],
+    palette: { '1': '#00e676' },
+    scale: 4,
+  } as PixelIconDef,
+
+  // 8×8 獎盃（🏆）- 亮點
+  trophy: {
+    grid: [
+      '...##...',
+      '..####..',
+      '..####..',
+      '.######.',
+      '##.##.##',
+      '##.##.##',
+      '.######.',
+      '..####..',
+    ],
+    palette: { '1': '#ff6e40' },
     scale: 4,
   } as PixelIconDef,
 };
@@ -397,7 +477,13 @@ function renderModules(modules: CourseModule[]): string {
 }
 
 function renderHighlights(highlights: string[]): string {
-  const icons = ['🎯', '👨‍🏫', '💻', '📜', '🏆'];
+  const icons = [
+    pixelIcons.target,
+    pixelIcons.cap,
+    pixelIcons.laptop,
+    pixelIcons.certificate,
+    pixelIcons.trophy,
+  ];
 
   return `
     <div class="highlights-section">
@@ -410,7 +496,7 @@ function renderHighlights(highlights: string[]): string {
           .map(
             (h, i) => `
             <div class="highlight-item">
-              <span class="highlight-icon">${icons[i]}</span>
+              <span class="highlight-icon">${renderPixelIcon(icons[i])}</span>
               <span class="highlight-text">${h}</span>
             </div>
           `,
