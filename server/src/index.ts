@@ -14,12 +14,20 @@ const app = express();
 // Trust proxy for nginx reverse proxy setups
 app.set('trust proxy', 1);
 
-// Serve frontend static files when deployed together (single-server mode)
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const frontendDist = path.resolve(__dirname, '..', '..', 'dist');
-if (fs.existsSync(frontendDist)) {
+// Serve frontend static files when deployed together (single-server mode).
+// Try multiple paths: from cwd (production: node dist/server/src/index.js from server/)
+// and relative to this file (dev: tsx src/index.ts from server/).
+const candidatePaths = [
+  path.resolve(process.cwd(), '..', 'dist'),
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'dist'),
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', 'dist'),
+];
+const frontendDist = candidatePaths.find((p) => fs.existsSync(path.join(p, 'index.html')));
+if (frontendDist) {
   app.use(express.static(frontendDist));
   console.log(`Serving frontend from: ${frontendDist}`);
+} else {
+  console.log('Frontend dist not found, running backend-only');
 }
 
 const server = createServer(app);
