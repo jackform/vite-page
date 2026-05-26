@@ -13,9 +13,7 @@ import type {
   ClientToServerEvents,
 } from '../shared/types';
 
-const SOCKET_URL = import.meta.env.PROD
-  ? window.location.origin
-  : 'http://localhost:3001';
+const SOCKET_URL = import.meta.env.VITE_SERVER_URL || window.location.origin;
 
 let app: HTMLElement;
 let socket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null;

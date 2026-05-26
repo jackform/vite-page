@@ -7,9 +7,7 @@ import type {
   ClientToServerEvents,
 } from '../shared/types';
 
-const SOCKET_URL = import.meta.env.PROD
-  ? window.location.origin
-  : 'http://localhost:3001';
+const SOCKET_URL = import.meta.env.VITE_SERVER_URL || window.location.origin;
 
 type EventHandler<K extends keyof ServerToClientEvents> =
   ServerToClientEvents[K] extends (...args: infer A) => void
