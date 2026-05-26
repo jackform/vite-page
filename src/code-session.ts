@@ -54,11 +54,8 @@ export class CodeSession {
     return this.socket;
   }
 
-  /** Start listening for remote code changes from the server. */
+  /** Store the socket reference for sending code updates. */
   bindSocket(socket: CodeSocket): void {
     this.socket = socket;
-    socket.on('code:broadcast', (data) => {
-      this.applyRemoteCode(data.code);
-    });
   }
 }
