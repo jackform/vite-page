@@ -5,59 +5,92 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm run dev      # Start dev server (Vite HMR)
-npm run build    # Type-check then build for production
-npm run preview  # Preview production build locally
+npm run dev           # Start Vite dev server (HMR, port 5173)
+npm run build         # tsc type-check + vite build → dist/
+npm run preview       # Preview production build locally
+npm run server:dev    # Start backend dev server (tsx watch, port 3001)
+npm run server:build  # Compile server TypeScript → server/dist/
 ```
 
 No test runner or linter is configured.
 
-The project deploys to GitHub Pages with `base: '/vite-page/'` configured in `vite.config.ts`. All asset paths in production are prefixed with `/vite-page/`. Pushing to `main` triggers the deploy via `.github/workflows/deploy.yml`.
-
-`npm run build` runs `tsc && vite build` — `tsc` does type-checking only (no emit), while `vite build` produces the actual output in `dist/`.
-
 ## Architecture
 
-Three standalone pages rendered with no framework — just TypeScript manipulating the DOM via `innerHTML` and template strings. No routing, state management, or component abstraction.
+Four standalone pages, no framework — TypeScript manipulating the DOM via `innerHTML` and template strings. Dependencies: `vite`, `codemirror` + `@codemirror/*`.
 
-Dependencies: `typescript`, `vite`, `codemirror` + `@codemirror/*` (editor, Python language, one-dark theme).
+`vite.config.ts` multi-page build has four entries: `index.html`, `poster.html`, `code.html`, `teacher.html`. Base path is `/vite-page/` (for GitHub Pages). `npm run build` runs `tsc && vite build`.
 
-### Multi-page build
+### Backend (`server/`)
 
-`vite.config.ts` configures a multi-page build via `rollupOptions.input` with three entries: `index.html`, `poster.html`, and `code.html`. All three are deployed together to GitHub Pages.
+Node.js + Express + Socket.io server that powers the real-time student-teacher system. Compiles to `server/dist/server/src/`. ESM with `.js` extensions required on all local imports (`import { x } from './foo.js'`). Run with `node dist/server/src/index.js` in production.
 
-### Main profile page (`index.html` → `src/main.ts`)
+**Key files:**
+- `server/src/index.ts` — Express app, Socket.io setup, serves frontend `dist/` (tries multiple candidate paths), health endpoint at `/health`
+- `server/src/handlers.ts` — all Socket.io event handlers (see protocol below)
+- `server/src/room-manager.ts` — tracks student sessions (socketId → record with `currentCode`, `lastExecution` snapshots)
+- `server/src/auth.ts` — constant-time teacher password validation against `TEACHER_PASSWORD` env var
 
-- `src/types.ts` — all type definitions (Person, Skill, Experience, etc.) and utility types
-- `src/data.ts` — hardcoded profile data, exported as a typed `Person` object
-- `src/utils.ts` — helper functions (generic `groupBy`, type guards, date formatting, simulated async fetch)
-- `src/style.css` — light theme, Apple-style design, CSS custom properties
+**Env vars:** `PORT` (default 3001), `TEACHER_PASSWORD`, `CORS_ORIGIN` (comma-separated, defaults to `*`).
 
-The `init()` function simulates an async API call via `fetchPerson()` — this uses dynamic `import('./data')` (not a static import) with an artificial 800ms delay, demonstrating how real async data fetching would work. It shows a loading state, then calls `renderPage()`, with error handling for failed loads. `renderPage()` assembles the full page by concatenating the output of individual `render*()` functions into `app.innerHTML`.
+**Socket.io event protocol:**
 
-### Poster page (`poster.html` → `src/poster.ts`)
+| Event | Direction | Purpose |
+|---|---|---|
+| `student:register` | Student → Server | Join with `{ name, studentId }` |
+| `session:registered` | Server → Student | Confirmed with `{ roomId, userId }` |
+| `code:update` | Student → Server | Debounced code change |
+| `code:broadcast` | Server → Teacher | Pushed to subscribed teachers |
+| `execution:result` | Student → Server | After running code |
+| `execution:broadcast` | Server → Teacher | Forwarded to subscribed teachers |
+| `teacher:auth` | Teacher → Server | Password authentication |
+| `room:subscribe` / `room:unsubscribe` | Teacher → Server | Watch/unwatch a student |
+| `roster:update` | Server → Teacher | Full student list |
 
-A dark sci-fi themed course promotion poster targeting Hong Kong students. Renders synchronously on `DOMContentLoaded` — no async simulation.
-
-- `src/poster.css` — dark theme with animated grid background, floating particles, and glow effects
-- `src/poster.ts` — hardcoded `PosterData` object with course modules, highlights, and info bar details
-
-**Pixel icon system** (`src/poster.ts`): Icons are defined as 2D character grids where each character maps to a color in a palette (`.` = transparent, `#`/`1`/`2`/`3` = palette indices). `renderPixelIcon()` converts a grid to absolute-positioned `<span>` elements inside a container. Both the profile and poster pages use this pattern.
+Server stores latest code and execution result per student in `RoomManager`. When a teacher subscribes to a room, the cached state is sent immediately.
 
 ### Coding lab page (`code.html` → `src/code.ts`)
 
-A Python coding problem platform (LeetCode-style) with a CodeMirror 6 editor, Pyodide-based Python execution in a Web Worker, and a test runner. Chinese-localized (zh-HK), dark theme.
+A LeetCode-style Python coding platform with CodeMirror 6 editor, Pyodide-based Python execution in a Web Worker, real-time code sync to backend, and a test runner. Chinese-localized (zh-HK), dark theme.
 
-Five source modules for this page, all prefixed `code-`:
-- `src/code-types.ts` — types for CodeProblem, ExecutionResult, TestRunResult, SessionConfig, etc.
-- `src/code-problems.ts` — hardcoded problem definitions (Two Sum, FizzBuzz) with starter code and test cases
-- `src/code-session.ts` — session abstraction that wraps code state; currently local-only but designed as a seam for future Yjs real-time collaboration (roomId, role, userId fields are already wired)
-- `src/code-editor.ts` — wraps CodeMirror 6 (Python mode, one-dark theme, indentWithTab); exposes `getCode()`, `setCode()`, `onChange()` (debounced at 300ms). The rest of the app never touches CodeMirror APIs directly
-- `src/code-executor.ts` — manages a Pyodide Web Worker. Loads Pyodide once, then accepts `execute(code)` and `runTests(code, testCases)` with configurable timeouts. On timeout, terminates and auto-recreates the worker
-- `src/code.css` — dark theme CSS custom properties
+**Lifecycle:** `DOMContentLoaded` → renders registration overlay (name + studentId) → on submit, `CodeSocket.register()` connects to backend via Socket.io → on success, renders editor layout, mounts CodeMirror, loads Pyodide, wires Run/Tests buttons.
 
-**Web Worker** (`public/code-worker.js`): A classic Web Worker (using `importScripts`, not ESM) that loads Pyodide from CDN and runs `pyodide.runPython()`. Placed in `public/` so Vite serves it as-is without processing. The main thread communicates via `postMessage` (`{ type: 'run', code }` → `{ type: 'result', stdout, stderr, ... }`).
+**Source modules (all prefixed `code-`):**
+- `src/code-types.ts` — types for CodeProblem, TestCase, ExecutionResult, SessionConfig, etc.
+- `src/code-problems.ts` — hardcoded problems (Two Sum, FizzBuzz) with starter code and test cases
+- `src/code-session.ts` — `CodeSession` class wraps local code state and syncs to server via `CodeSocket`. `updateCode()` sends `code:update` over socket. Student does NOT listen to `code:broadcast` (only teacher does).
+- `src/code-socket.ts` — Socket.io client wrapper. `register(identity)` connects and waits for `session:registered`. `sendCodeUpdate()`, `sendExecutionResult()`, `onDisconnect()`/`onConnect()` for built-in events. Uses `VITE_SERVER_URL` env var or falls back to `window.location.origin`.
+- `src/code-editor.ts` — CodeMirror 6 wrapper with Python mode, one-dark theme, indentWithTab. Exposes `getCode()`, `setCode()`, `onChange()` (debounced 300ms). Constructor accepts optional `readOnly` boolean.
+- `src/code-executor.ts` — manages Pyodide Web Worker. Handles execute and runTests with timeouts; on timeout terminates and auto-recreates the worker.
+- `src/code-output.ts` — shared `renderOutput()`, `renderOutputLoading()`, `escapeHtml()` used by both student and teacher pages.
+- `src/code.css` — dark theme CSS, registration overlay styles.
 
-**Lifecycle**: On `DOMContentLoaded`, `init()` renders the layout, mounts CodeMirror, starts Pyodide loading (async, non-blocking), and wires up Run/Tests buttons. The Run button executes code directly; the Run Tests button generates a Python test harness that iterates test cases and prints structured `TEST_RESULT:` JSON lines for parsing.
+**Web Worker** (`public/code-worker.js`): Classic worker using `importScripts` to load Pyodide from CDN. Placed in `public/` so Vite serves it as-is without processing.
+
+### Teacher dashboard (`teacher.html` → `src/teacher.ts`)
+
+Real-time student monitoring page. Dark theme matching code.css.
+
+**Lifecycle:** `DOMContentLoaded` → auth overlay (password form) → on success, renders dashboard: sidebar roster panel + main monitor area with read-only CodeMirror viewer and execution output panel.
+
+- Roster updates via `roster:update` events. Click a student to subscribe to their room.
+- Code viewer: read-only `CodeEditor` instance, updates on `code:broadcast`.
+- Execution output rendered with shared `renderOutput()` from `code-output.ts`.
+- Reconnect: re-authenticates and re-subscribes to selected room.
+
+### Main profile page (`index.html` → `src/main.ts`) and Poster page (`poster.html` → `src/poster.ts`)
+
+Static pages — see git history for unchanged architecture.
+
+### Shared types (`shared/types.ts`)
+
+Socket event payload types used by both frontend and backend: `StudentIdentity`, `SessionInfo`, `RosterEntry`, `RemoteExecutionResult`, `AuthRequest`/`AuthResult`, plus `ServerToClientEvents`/`ClientToServerEvents` interfaces for typed Socket.io usage.
+
+The main `tsconfig.json` includes `"src"` and `"shared"` so frontend code can import from `../shared/types`.
+
+## Deployment
+
+**Frontend (GitHub Pages):** Push to `main` triggers `.github/workflows/deploy.yml`. Set `VITE_SERVER_URL` in GitHub Actions Variables to point to the backend server.
+
+**Backend (standalone server):** Clone repo, `npm install && cd server && npm install`, `npx vite build && npm run server:build`, then `cd server && node dist/server/src/index.js`. The server serves frontend static files from `dist/` so a single port handles everything. Requires Node ≥20 (use `unofficial-builds.nodejs.org` glibc-217 builds for older Ubuntu).
 
 This is a TypeScript learning/demo project — the verbose comments explaining TS concepts (type guards, function overloads, `as const`, generics) are intentional. Do not remove or shorten them.
