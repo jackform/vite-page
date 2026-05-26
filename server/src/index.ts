@@ -5,9 +5,9 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { RoomManager } from './room-manager';
-import { registerHandlers } from './handlers';
-import type { ClientToServerEvents, ServerToClientEvents } from '../../shared/types';
+import { RoomManager } from './room-manager.js';
+import { registerHandlers } from './handlers.js';
+import type { ClientToServerEvents, ServerToClientEvents } from '../../shared/types.js';
 
 const app = express();
 

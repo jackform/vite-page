@@ -4,9 +4,9 @@ import type {
   AuthRequest,
   ClientToServerEvents,
   ServerToClientEvents,
-} from '../../shared/types';
-import { RoomManager } from './room-manager';
-import { validateTeacherPassword } from './auth';
+} from '../../shared/types.js';
+import { RoomManager } from './room-manager.js';
+import { validateTeacherPassword } from './auth.js';
 
 // Track which student room each teacher is currently watching
 const teacherWatching: Map<string, string> = new Map();

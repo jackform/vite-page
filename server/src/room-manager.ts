@@ -1,4 +1,4 @@
-import type { RosterEntry, RemoteExecutionResult } from '../../shared/types';
+import type { RosterEntry, RemoteExecutionResult } from '../../shared/types.js';
 
 interface CodeSnapshot {
   code: string;
