@@ -16,11 +16,15 @@ The project deploys to GitHub Pages with `base: '/vite-page/'` configured in `vi
 
 `npm run build` runs `tsc && vite build` — `tsc` does type-checking only (no emit), while `vite build` produces the actual output in `dist/`.
 
-Only two devDependencies: `typescript` and `vite`.
-
 ## Architecture
 
-Two standalone pages rendered with no framework — just TypeScript manipulating the DOM via `innerHTML` and template strings. No routing, state management, or component abstraction.
+Three standalone pages rendered with no framework — just TypeScript manipulating the DOM via `innerHTML` and template strings. No routing, state management, or component abstraction.
+
+Dependencies: `typescript`, `vite`, `codemirror` + `@codemirror/*` (editor, Python language, one-dark theme).
+
+### Multi-page build
+
+`vite.config.ts` configures a multi-page build via `rollupOptions.input` with three entries: `index.html`, `poster.html`, and `code.html`. All three are deployed together to GitHub Pages.
 
 ### Main profile page (`index.html` → `src/main.ts`)
 
@@ -38,10 +42,22 @@ A dark sci-fi themed course promotion poster targeting Hong Kong students. Rende
 - `src/poster.css` — dark theme with animated grid background, floating particles, and glow effects
 - `src/poster.ts` — hardcoded `PosterData` object with course modules, highlights, and info bar details
 
-**Pixel icon system** (`src/poster.ts`): Icons are defined as 2D character grids where each character maps to a color in a palette (`.` = transparent, `#`/`1`/`2`/`3` = palette indices). `renderPixelIcon()` converts a grid to absolute-positioned `<span>` elements inside a container. Both pages use this pattern — the profile page has a smaller inline robot icon for the poster entrance card, and the poster page has a full suite of icons (robot, chip, monitor, brain, star, rocket, shield, calendar, clock, pin, people, speech, target, cap, laptop, certificate, trophy).
+**Pixel icon system** (`src/poster.ts`): Icons are defined as 2D character grids where each character maps to a color in a palette (`.` = transparent, `#`/`1`/`2`/`3` = palette indices). `renderPixelIcon()` converts a grid to absolute-positioned `<span>` elements inside a container. Both the profile and poster pages use this pattern.
 
-### Multi-page build
+### Coding lab page (`code.html` → `src/code.ts`)
 
-`vite.config.ts` configures a multi-page build via `rollupOptions.input` with two entries: `index.html` and `poster.html`. Both are deployed together to GitHub Pages.
+A Python coding problem platform (LeetCode-style) with a CodeMirror 6 editor, Pyodide-based Python execution in a Web Worker, and a test runner. Chinese-localized (zh-HK), dark theme.
+
+Five source modules for this page, all prefixed `code-`:
+- `src/code-types.ts` — types for CodeProblem, ExecutionResult, TestRunResult, SessionConfig, etc.
+- `src/code-problems.ts` — hardcoded problem definitions (Two Sum, FizzBuzz) with starter code and test cases
+- `src/code-session.ts` — session abstraction that wraps code state; currently local-only but designed as a seam for future Yjs real-time collaboration (roomId, role, userId fields are already wired)
+- `src/code-editor.ts` — wraps CodeMirror 6 (Python mode, one-dark theme, indentWithTab); exposes `getCode()`, `setCode()`, `onChange()` (debounced at 300ms). The rest of the app never touches CodeMirror APIs directly
+- `src/code-executor.ts` — manages a Pyodide Web Worker. Loads Pyodide once, then accepts `execute(code)` and `runTests(code, testCases)` with configurable timeouts. On timeout, terminates and auto-recreates the worker
+- `src/code.css` — dark theme CSS custom properties
+
+**Web Worker** (`public/code-worker.js`): A classic Web Worker (using `importScripts`, not ESM) that loads Pyodide from CDN and runs `pyodide.runPython()`. Placed in `public/` so Vite serves it as-is without processing. The main thread communicates via `postMessage` (`{ type: 'run', code }` → `{ type: 'result', stdout, stderr, ... }`).
+
+**Lifecycle**: On `DOMContentLoaded`, `init()` renders the layout, mounts CodeMirror, starts Pyodide loading (async, non-blocking), and wires up Run/Tests buttons. The Run button executes code directly; the Run Tests button generates a Python test harness that iterates test cases and prints structured `TEST_RESULT:` JSON lines for parsing.
 
 This is a TypeScript learning/demo project — the verbose comments explaining TS concepts (type guards, function overloads, `as const`, generics) are intentional. Do not remove or shorten them.
