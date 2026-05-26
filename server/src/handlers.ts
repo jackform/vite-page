@@ -8,6 +8,9 @@ import type {
 import { RoomManager } from './room-manager';
 import { validateTeacherPassword } from './auth';
 
+// Track which student room each teacher is currently watching
+const teacherWatching: Map<string, string> = new Map();
+
 export function registerHandlers(
   io: Server<ClientToServerEvents, ServerToClientEvents>,
   socket: Socket<ClientToServerEvents, ServerToClientEvents>,
@@ -37,13 +40,15 @@ export function registerHandlers(
       studentId: record.studentId,
     });
 
-    // Notify all teachers
     io.emit('roster:update', { students: roomManager.getRoster() });
   });
 
   socket.on('code:update', (data: { code: string; timestamp: number }) => {
     const student = roomManager.getStudentBySocket(socket.id);
     if (!student) return;
+
+    // Store latest code state on server
+    roomManager.updateCode(socket.id, data.code, data.timestamp);
 
     // Broadcast to all watchers EXCEPT the sender
     socket.to(student.roomId).emit('code:broadcast', {
@@ -58,7 +63,7 @@ export function registerHandlers(
     const student = roomManager.getStudentBySocket(socket.id);
     if (!student) return;
 
-    socket.to(student.roomId).emit('execution:broadcast', {
+    const result = {
       roomId: student.roomId,
       status: data.status,
       stdout: data.stdout,
@@ -68,7 +73,12 @@ export function registerHandlers(
       totalCount: data.totalCount,
       executionTime: data.executionTime,
       timestamp: data.timestamp,
-    });
+    };
+
+    // Store latest execution result on server
+    roomManager.updateExecution(socket.id, result);
+
+    socket.to(student.roomId).emit('execution:broadcast', result);
   });
 
   // ---- Teacher Events ----
@@ -77,7 +87,6 @@ export function registerHandlers(
     if (validateTeacherPassword(data.password)) {
       socket.data.isTeacher = true;
       socket.emit('auth:result', { success: true });
-      // Send current full roster
       socket.emit('roster:update', { students: roomManager.getRoster() });
     } else {
       socket.emit('auth:result', { success: false, error: 'Invalid password' });
@@ -87,29 +96,42 @@ export function registerHandlers(
   socket.on('room:subscribe', (data: { roomId: string }) => {
     if (!socket.data.isTeacher) return;
 
-    // Leave previously subscribed rooms (teacher watches one at a time)
-    for (const room of socket.rooms) {
-      if (room !== socket.id && room.startsWith('room-')) {
-        socket.leave(room);
-        roomManager.unsubscribeTeacher(socket.id, room);
-      }
+    // Leave previously watched room
+    const prevRoom = teacherWatching.get(socket.id);
+    if (prevRoom) {
+      socket.leave(prevRoom);
     }
 
+    // Join new room
     socket.join(data.roomId);
-    roomManager.subscribeTeacher(socket.id, data.roomId);
+    teacherWatching.set(socket.id, data.roomId);
+
+    // Send the student's current code and execution state immediately
+    const student = roomManager.getStudentByRoomId(data.roomId);
+    if (student?.currentCode) {
+      socket.emit('code:broadcast', {
+        roomId: student.roomId,
+        code: student.currentCode.code,
+        studentName: student.name,
+        timestamp: student.currentCode.timestamp,
+      });
+    }
+    if (student?.lastExecution) {
+      socket.emit('execution:broadcast', student.lastExecution);
+    }
   });
 
   socket.on('room:unsubscribe', (data: { roomId: string }) => {
     socket.leave(data.roomId);
-    roomManager.unsubscribeTeacher(socket.id, data.roomId);
+    teacherWatching.delete(socket.id);
   });
 
   // ---- Disconnect ----
 
   socket.on('disconnect', () => {
-    if (socket.data.isTeacher) {
-      roomManager.removeTeacher(socket.id);
-    } else {
+    teacherWatching.delete(socket.id);
+
+    if (!socket.data.isTeacher) {
       const student = roomManager.removeStudent(socket.id);
       if (student) {
         io.emit('roster:update', { students: roomManager.getRoster() });

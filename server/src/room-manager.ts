@@ -1,4 +1,9 @@
-import type { RosterEntry } from '../../shared/types';
+import type { RosterEntry, RemoteExecutionResult } from '../../shared/types';
+
+interface CodeSnapshot {
+  code: string;
+  timestamp: number;
+}
 
 interface StudentRecord {
   studentId: string;
@@ -6,11 +11,12 @@ interface StudentRecord {
   roomId: string;
   socketId: string;
   joinedAt: number;
+  currentCode: CodeSnapshot | null;
+  lastExecution: RemoteExecutionResult | null;
 }
 
 export class RoomManager {
   private studentsBySocket: Map<string, StudentRecord> = new Map();
-  private teacherWatchers: Map<string, Set<string>> = new Map();
 
   addStudent(socketId: string, studentId: string, name: string): StudentRecord {
     const roomId = `room-${studentId}`;
@@ -20,6 +26,8 @@ export class RoomManager {
       roomId,
       socketId,
       joinedAt: Date.now(),
+      currentCode: null,
+      lastExecution: null,
     };
     this.studentsBySocket.set(socketId, record);
     return record;
@@ -37,6 +45,27 @@ export class RoomManager {
     return this.studentsBySocket.get(socketId);
   }
 
+  getStudentByRoomId(roomId: string): StudentRecord | undefined {
+    for (const record of this.studentsBySocket.values()) {
+      if (record.roomId === roomId) return record;
+    }
+    return undefined;
+  }
+
+  updateCode(socketId: string, code: string, timestamp: number): void {
+    const record = this.studentsBySocket.get(socketId);
+    if (record) {
+      record.currentCode = { code, timestamp };
+    }
+  }
+
+  updateExecution(socketId: string, result: RemoteExecutionResult): void {
+    const record = this.studentsBySocket.get(socketId);
+    if (record) {
+      record.lastExecution = result;
+    }
+  }
+
   getRoster(): RosterEntry[] {
     const entries: RosterEntry[] = [];
     for (const record of this.studentsBySocket.values()) {
@@ -51,36 +80,7 @@ export class RoomManager {
     return entries;
   }
 
-  subscribeTeacher(teacherSocketId: string, roomId: string): void {
-    let watchers = this.teacherWatchers.get(roomId);
-    if (!watchers) {
-      watchers = new Set();
-      this.teacherWatchers.set(roomId, watchers);
-    }
-    watchers.add(teacherSocketId);
-  }
-
-  unsubscribeTeacher(teacherSocketId: string, roomId: string): void {
-    const watchers = this.teacherWatchers.get(roomId);
-    if (watchers) {
-      watchers.delete(teacherSocketId);
-      if (watchers.size === 0) {
-        this.teacherWatchers.delete(roomId);
-      }
-    }
-  }
-
-  removeTeacher(teacherSocketId: string): void {
-    for (const [roomId, watchers] of this.teacherWatchers) {
-      watchers.delete(teacherSocketId);
-      if (watchers.size === 0) {
-        this.teacherWatchers.delete(roomId);
-      }
-    }
-  }
-
   getTeacherWatchers(roomId: string): string[] {
-    const watchers = this.teacherWatchers.get(roomId);
-    return watchers ? Array.from(watchers) : [];
+    return []; // no longer tracking teacher watchers explicitly
   }
 }
