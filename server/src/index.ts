@@ -25,6 +25,7 @@ const candidatePaths = [
 const frontendDist = candidatePaths.find((p) => fs.existsSync(path.join(p, 'index.html')));
 if (frontendDist) {
   app.use(express.static(frontendDist));
+  app.use('/vite-page', express.static(frontendDist));
   console.log(`Serving frontend from: ${frontendDist}`);
 } else {
   console.log('Frontend dist not found, running backend-only');
