@@ -17,7 +17,11 @@ export class CodeEditor {
   private onChangeCallback: ((code: string) => void) | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(container: HTMLElement, initialCode: string) {
+  constructor(
+    container: HTMLElement,
+    initialCode: string,
+    readOnly = false
+  ) {
     const extensions = [
       basicSetup,
       python(),
@@ -29,6 +33,10 @@ export class CodeEditor {
         }
       }),
     ];
+
+    if (readOnly) {
+      extensions.push(EditorView.editable.of(false));
+    }
 
     this.view = new EditorView({
       state: EditorState.create({

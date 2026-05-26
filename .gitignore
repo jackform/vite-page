@@ -3,3 +3,6 @@ dist
 .DS_Store
 .idea
 .playwright-mcp
+.env
+server/dist
+server/node_modules

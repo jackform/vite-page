@@ -447,6 +447,88 @@ body {
 
 /* ---- Responsive ---- */
 
+/* ---- Registration Overlay ---- */
+
+.registration-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--code-bg);
+}
+
+.registration-card {
+  background: var(--code-surface);
+  border: 1px solid var(--code-border);
+  border-radius: 12px;
+  padding: 40px;
+  width: 420px;
+  max-width: 90vw;
+  text-align: center;
+}
+
+.registration-card h1 {
+  font-size: 1.5rem;
+  margin-bottom: 8px;
+  color: var(--code-text);
+}
+
+.registration-subtitle {
+  color: var(--code-muted);
+  margin-bottom: 24px;
+  font-size: 0.9rem;
+}
+
+.reg-label {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  gap: 6px;
+  margin-bottom: 16px;
+  font-size: 0.85rem;
+  color: var(--code-muted);
+}
+
+.reg-input {
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--code-text);
+  font-size: 0.95rem;
+}
+
+.reg-input:focus {
+  outline: none;
+  border-color: var(--code-accent);
+}
+
+.reg-error {
+  color: var(--code-red);
+  margin-top: 12px;
+  font-size: 0.85rem;
+}
+
+.reg-loading {
+  color: var(--code-muted);
+  margin-top: 12px;
+  font-size: 0.85rem;
+}
+
+/* ---- Connection Status in Nav ---- */
+
+.conn-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--code-muted);
+}
+
+/* ---- Utilities ---- */
+
+.hidden { display: none; }
+
 @media (max-width: 768px) {
   body {
     overflow: auto;

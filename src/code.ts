@@ -2,29 +2,29 @@
  * Python Coding Lab — Main orchestrator.
  *
  * Lifecycle:
- * 1. Render the empty layout on DOMContentLoaded
- * 2. Mount CodeMirror editor with starter code
- * 3. Kick off Pyodide load (async, slow)
- * 4. Once Pyodide is ready, enable Run/Tests buttons
- * 5. On Run/Tests: send code to executor, display results
- *
- * This is the page entry point, analogous to src/main.ts and src/poster.ts.
+ * 1. Render registration overlay
+ * 2. Student registers via WebSocket
+ * 3. Render editor layout with CodeMirror + Pyodide
+ * 4. Code changes sync to server in real-time
+ * 5. Run/Tests execute locally via Pyodide, results sent to server
  */
 
 import './code.css';
 import { CodeEditor } from './code-editor';
 import { CodeExecutor } from './code-executor';
 import { CodeSession } from './code-session';
+import { CodeSocket } from './code-socket';
 import { problems, defaultProblem } from './code-problems';
+import { renderOutput, renderOutputLoading, escapeHtml } from './code-output';
 import type { CodeProblem, ExecutionStatus, TestRunResult } from './code-types';
-
-/* ---- DOM references (populated after renderLayout) ---- */
 
 let app: HTMLElement;
 let editor: CodeEditor;
 let executor: CodeExecutor;
 let session: CodeSession;
+let socket: CodeSocket;
 let currentProblem: CodeProblem = defaultProblem;
+let isApplyingRemote = false;
 
 /* ---- Render Functions ---- */
 
@@ -33,7 +33,10 @@ function renderLayout(): string {
     <nav class="code-nav">
       <a href="./">← 返回個人主頁</a>
       <span class="code-nav-title">Python 程式設計實驗室</span>
-      <div></div>
+      <div class="conn-status">
+        <span class="status-dot" id="conn-dot"></span>
+        <span id="conn-text">Connected</span>
+      </div>
     </nav>
     <div class="code-layout">
       <div class="problem-panel" id="problem-panel"></div>
@@ -51,6 +54,30 @@ function renderLayout(): string {
         <div class="output-panel" id="output-panel">
           <div class="output-placeholder">Python environment is loading, please wait...</div>
         </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderRegistrationForm(): string {
+  return `
+    <div class="registration-overlay">
+      <div class="registration-card">
+        <h1>Python 程式設計實驗室</h1>
+        <p class="registration-subtitle">請輸入你的資料以加入課堂</p>
+        <form id="reg-form">
+          <label class="reg-label">
+            <span>姓名 Name</span>
+            <input type="text" id="reg-name" class="reg-input" placeholder="陳小明" required autocomplete="off" />
+          </label>
+          <label class="reg-label">
+            <span>學生編號 Student ID</span>
+            <input type="text" id="reg-student-id" class="reg-input" placeholder="20240001" required autocomplete="off" />
+          </label>
+          <button type="submit" class="btn btn-run" id="reg-submit">加入課堂</button>
+        </form>
+        <div id="reg-error" class="reg-error hidden"></div>
+        <div id="reg-loading" class="reg-loading hidden">正在連接...</div>
       </div>
     </div>
   `;
@@ -93,81 +120,54 @@ function renderConstraints(constraints: string[]): string {
   return `<div class="problem-section-title">Constraints</div><ul class="constraints-list">${items}</ul>`;
 }
 
-function renderOutput(result: TestRunResult): string {
-  let html = '';
+/* ---- Registration ---- */
 
-  // Stdout section
-  if (result.stdout.trim()) {
-    html += `<div class="output-stdout">${escapeHtml(result.stdout.trim())}</div>`;
-  }
+function initRegistration(): void {
+  app = document.getElementById('code-app') as HTMLElement;
+  if (!app) return;
 
-  // Stderr section
-  if (result.stderr.trim()) {
-    html += `<div class="output-stderr">${escapeHtml(result.stderr.trim())}</div>`;
-  }
+  app.innerHTML = renderRegistrationForm();
 
-  // Return value
-  if (result.returnValue !== undefined && result.returnValue !== 'None') {
-    html += `<div class="output-stdout">⇒ ${escapeHtml(result.returnValue)}</div>`;
-  }
+  const form = document.getElementById('reg-form') as HTMLFormElement;
+  const errorDiv = document.getElementById('reg-error')!;
+  const loadingDiv = document.getElementById('reg-loading')!;
+  const submitBtn = document.getElementById('reg-submit') as HTMLButtonElement;
 
-  // Test results (if running tests)
-  if (result.testResults && result.testResults.length > 0) {
-    html += '<div class="test-results">';
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
 
-    const allPassed = result.testResults.every((t) => t.passed);
-    html += `<div class="test-result-summary ${allPassed ? 'all-passed' : 'has-failures'}">`;
-    html += `${allPassed ? '✓' : '✗'} ${result.passedCount}/${result.totalCount} tests passed`;
-    html += '</div>';
+    const nameInput = document.getElementById('reg-name') as HTMLInputElement;
+    const studentIdInput = document.getElementById('reg-student-id') as HTMLInputElement;
+    const name = nameInput.value.trim();
+    const studentId = studentIdInput.value.trim();
 
-    for (const tr of result.testResults) {
-      html += `
-        <div class="test-case-item ${tr.passed ? 'test-passed' : 'test-failed'}">
-          <span class="test-case-index">Test ${tr.index + 1}</span>
-          <div class="test-case-detail">
-            <div><span class="label">Input: </span><span class="value">${escapeHtml(tr.input)}</span></div>
-            <div><span class="label">Expected: </span><span class="value">${escapeHtml(tr.expected)}</span></div>
-            <div><span class="label">Actual: </span><span class="${tr.passed ? 'value' : 'actual-error'}">${escapeHtml(tr.actual)}</span></div>
-          </div>
-        </div>
-      `;
+    if (!name || !studentId) return;
+
+    errorDiv.classList.add('hidden');
+    loadingDiv.classList.remove('hidden');
+    submitBtn.disabled = true;
+
+    try {
+      socket = new CodeSocket();
+      const sessionInfo = await socket.register({ name, studentId });
+      await initLab(sessionInfo);
+    } catch (err) {
+      loadingDiv.classList.add('hidden');
+      submitBtn.disabled = false;
+      errorDiv.textContent = err instanceof Error ? err.message : 'Connection failed';
+      errorDiv.classList.remove('hidden');
     }
-
-    html += '</div>';
-  }
-
-  // Execution time
-  if (result.executionTime !== undefined) {
-    html += `<div class="output-meta">Execution time: ${result.executionTime}ms</div>`;
-  }
-
-  // Show error for timeout
-  if (result.status === 'timeout') {
-    html += `<div class="output-stderr">⏱ ${escapeHtml(result.stderr)}</div>`;
-  }
-
-  return html;
-}
-
-/** Show loading state in the output panel. */
-function renderOutputLoading(): string {
-  return '<div class="output-loading"><span class="loading-spinner"></span> Running...</div>';
-}
-
-/** Escape HTML special characters. */
-function escapeHtml(text: string): string {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  });
 }
 
 /* ---- Init ---- */
 
-async function init(): Promise<void> {
-  app = document.getElementById('code-app') as HTMLElement;
-  if (!app) return;
-
-  // ---- Render layout ----
+async function initLab(sessionInfo: {
+  roomId: string;
+  userId: string;
+  studentName: string;
+  studentId: string;
+}): Promise<void> {
   app.innerHTML = renderLayout();
 
   const problemPanel = document.getElementById('problem-panel')!;
@@ -178,31 +178,51 @@ async function init(): Promise<void> {
   const btnProblem = document.getElementById('btn-problem')! as HTMLButtonElement;
   const statusText = document.getElementById('status-text')!;
   const statusDot = document.querySelector('.status-dot')!;
+  const connDot = document.getElementById('conn-dot')!;
+  const connText = document.getElementById('conn-text')!;
 
-  // ---- Render problem description ----
   problemPanel.innerHTML = renderProblem(currentProblem);
 
-  // ---- Create session (Yjs-ready seam) ----
   session = new CodeSession(
-    { roomId: 'default', role: 'student', userId: 'anonymous' },
-    currentProblem.starterCode
+    { roomId: sessionInfo.roomId, role: 'student', userId: sessionInfo.userId },
+    currentProblem.starterCode,
+    socket
   );
 
-  // ---- Mount editor ----
   editor = new CodeEditor(editorPanel, currentProblem.starterCode);
 
   editor.onChange((code) => {
+    if (isApplyingRemote) return;
     session.updateCode(code);
   });
 
-  // ---- Create executor and start loading Pyodide ----
+  session.onRemoteChange((code) => {
+    isApplyingRemote = true;
+    editor.setCode(code);
+    isApplyingRemote = false;
+  });
+
+  // Connection status
+  function updateConnStatus(): void {
+    if (socket.isConnected()) {
+      connDot.className = 'status-dot status-ready';
+      connText.textContent = 'Connected';
+    } else {
+      connDot.className = 'status-dot status-error';
+      connText.textContent = 'Disconnected';
+    }
+  }
+  updateConnStatus();
+
+  socket.onDisconnect(() => updateConnStatus());
+  socket.onConnect(() => updateConnStatus());
+
   executor = new CodeExecutor();
 
   executor.onStatusChange((status: ExecutionStatus) => {
     updateStatusUI(status, statusText, statusDot, btnRun, btnTests);
   });
 
-  // Start loading Pyodide in background (don't block the UI)
   executor.load().then(() => {
     // Ready — update UI handled by onStatusChange
   }).catch((err) => {
@@ -210,14 +230,20 @@ async function init(): Promise<void> {
     outputPanel.innerHTML = `<div class="output-stderr">Failed to load Python environment: ${escapeHtml(err.message)}</div>`;
   });
 
-  // ---- Button handlers ----
-
   async function handleRun(): Promise<void> {
     if (!executor.isReady()) return;
     outputPanel.innerHTML = renderOutputLoading();
     const code = editor.getCode();
     const result = await executor.execute(code);
     outputPanel.innerHTML = renderOutput(result);
+
+    socket.sendExecutionResult({
+      status: result.status,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      returnValue: result.returnValue,
+      executionTime: result.executionTime,
+    });
   }
 
   async function handleTests(): Promise<void> {
@@ -226,12 +252,20 @@ async function init(): Promise<void> {
     const code = editor.getCode();
     const result = await executor.runTests(code, currentProblem.testCases);
     outputPanel.innerHTML = renderOutput(result);
+
+    socket.sendExecutionResult({
+      status: result.status,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      passedCount: result.passedCount,
+      totalCount: result.totalCount,
+      executionTime: result.executionTime,
+    });
   }
 
   btnRun.addEventListener('click', handleRun);
   btnTests.addEventListener('click', handleTests);
 
-  // Problem switcher — cycles through available problems
   btnProblem.addEventListener('click', () => {
     const keys = Object.keys(problems);
     const currentIdx = keys.indexOf(currentProblem.id);
@@ -244,7 +278,6 @@ async function init(): Promise<void> {
     outputPanel.innerHTML = '<div class="output-placeholder">Code cleared. Press Run to execute.</div>';
   });
 
-  // Keyboard shortcut: Ctrl/Cmd+Enter to run
   document.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
@@ -296,4 +329,4 @@ function updateStatusUI(
 }
 
 // Boot
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', initRegistration);

@@ -10,6 +10,7 @@ export default defineConfig({
         main: resolve(__dirname, 'index.html'),
         poster: resolve(__dirname, 'poster.html'),
         code: resolve(__dirname, 'code.html'),
+        teacher: resolve(__dirname, 'teacher.html'),
       },
     },
   },
