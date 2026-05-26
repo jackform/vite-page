@@ -58,6 +58,28 @@ function renderSocialLink(link: SocialLink): string {
   `;
 }
 
+function renderCodeEntrance(): string {
+  return `
+    <div class="card code-entrance">
+      <div class="poster-entrance-content">
+        <span class="poster-entrance-icon">
+          <span class="pixel-icon" style="width:32px;height:32px">
+            <span style="position:absolute;left:0;top:4px;width:4px;height:24px;background:#a6e3a1"></span>
+            <span style="position:absolute;left:8px;top:12px;width:4px;height:16px;background:#a6e3a1"></span>
+            <span style="position:absolute;left:16px;top:8px;width:4px;height:8px;background:#f9e2af"></span>
+            <span style="position:absolute;left:28px;top:0;width:4px;height:32px;background:#89b4fa"></span>
+          </span>
+        </span>
+        <div class="poster-entrance-text">
+          <h3>Python 程式設計實驗室</h3>
+          <p>線上 Python 程式編輯器 — 像 LeetCode 一樣在瀏覽器中寫代碼！</p>
+        </div>
+        <a href="./code.html" class="poster-entrance-btn">開始編程</a>
+      </div>
+    </div>
+  `;
+}
+
 function renderPosterEntrance(): string {
   // 8×8 像素機器人圖標
   const robotGrid = [
@@ -193,6 +215,7 @@ function renderPage(p: Person): void {
   app.innerHTML = `
     <div class="container">
       ${renderHeader(p)}
+      ${renderCodeEntrance()}
       ${renderPosterEntrance()}
       ${renderAbout(p)}
       ${renderSkills(p.skills)}

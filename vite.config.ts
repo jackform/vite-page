@@ -9,6 +9,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         poster: resolve(__dirname, 'poster.html'),
+        code: resolve(__dirname, 'code.html'),
       },
     },
   },
