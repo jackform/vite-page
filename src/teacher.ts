@@ -14,6 +14,7 @@ import type {
 } from '../shared/types';
 
 const SOCKET_URL = import.meta.env.VITE_SERVER_URL || window.location.origin;
+const THEME_KEY = 'python-lab-theme';
 
 let app: HTMLElement;
 let socket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null;
@@ -21,6 +22,40 @@ let selectedRoomId: string | null = null;
 let codeEditor: CodeEditor | null = null;
 let rosterEntries: RosterEntry[] = [];
 let password = '';
+
+/* ---- Theme ---- */
+
+function loadTheme(): void {
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved === 'light') {
+    document.documentElement.dataset.theme = 'light';
+  } else {
+    delete document.documentElement.dataset.theme;
+  }
+}
+
+function isLightTheme(): boolean {
+  return document.documentElement.dataset.theme === 'light';
+}
+
+function toggleTheme(): void {
+  const current = document.documentElement.dataset.theme;
+  if (current === 'light') {
+    delete document.documentElement.dataset.theme;
+    localStorage.setItem(THEME_KEY, 'dark');
+  } else {
+    document.documentElement.dataset.theme = 'light';
+    localStorage.setItem(THEME_KEY, 'light');
+  }
+  updateThemeButton();
+  codeEditor?.setTheme(isLightTheme());
+}
+
+function updateThemeButton(): void {
+  const btn = document.getElementById('btn-theme-toggle');
+  if (!btn) return;
+  btn.textContent = isLightTheme() ? '☀' : '🌙';
+}
 
 /* ---- Auth ---- */
 
@@ -45,6 +80,8 @@ function renderAuthForm(): string {
 }
 
 function initAuth(): void {
+  loadTheme();
+
   app = document.getElementById('teacher-app') as HTMLElement;
   if (!app) return;
 
@@ -105,7 +142,8 @@ function initAuth(): void {
 function renderDashboard(): string {
   return `
     <nav class="teacher-nav">
-      <span class="teacher-nav-title">👨‍🏫 Teacher Dashboard — Python Lab</span>
+      <span class="teacher-nav-title">Teacher Dashboard — Python Lab</span>
+      <button class="btn-theme-toggle" id="btn-theme-toggle" title="切換主題">🌙</button>
       <div class="teacher-conn-status">
         <span class="status-dot" id="conn-dot"></span>
         <span id="conn-text">Connected</span>
@@ -158,6 +196,10 @@ function initDashboard(): void {
   }
   updateConnStatus();
   setInterval(updateConnStatus, 3000);
+
+  // Theme toggle
+  updateThemeButton();
+  document.getElementById('btn-theme-toggle')!.addEventListener('click', toggleTheme);
 
   function renderRoster(): void {
     studentCount.textContent = String(rosterEntries.length);
@@ -231,7 +273,7 @@ function initDashboard(): void {
 
     if (!codeEditor) {
       monitorEditor.innerHTML = '';
-      codeEditor = new CodeEditor(monitorEditor, data.code, true);
+      codeEditor = new CodeEditor(monitorEditor, data.code, true, isLightTheme());
     } else {
       codeEditor.setCode(data.code);
     }
