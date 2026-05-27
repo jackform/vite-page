@@ -18,7 +18,7 @@ No test runner or linter is configured.
 
 Four standalone pages, no framework — TypeScript manipulating the DOM via `innerHTML` and template strings. Dependencies: `vite`, `codemirror` + `@codemirror/*`.
 
-`vite.config.ts` multi-page build has four entries: `index.html`, `poster.html`, `code.html`, `teacher.html`. Base path is `/vite-page/` (for GitHub Pages). `npm run build` runs `tsc && vite build`.
+`vite.config.ts` multi-page build has four entries: `index.html`, `poster.html`, `code.html`, `teacher.html`. Base path is `/vite-page/` (for GitHub Pages). Dev server proxies `/socket.io` to `localhost:3001` so the Socket.io client connects to the same origin. `npm run build` runs `tsc && vite build`.
 
 ### Backend (`server/`)
 
@@ -59,7 +59,7 @@ A LeetCode-style Python coding platform with CodeMirror 6 editor, Pyodide-based 
 - `src/code-problems.ts` — hardcoded problems (Two Sum, FizzBuzz) with starter code and test cases
 - `src/code-session.ts` — `CodeSession` class wraps local code state and syncs to server via `CodeSocket`. `updateCode()` sends `code:update` over socket. Student does NOT listen to `code:broadcast` (only teacher does).
 - `src/code-socket.ts` — Socket.io client wrapper. `register(identity)` connects and waits for `session:registered`. `sendCodeUpdate()`, `sendExecutionResult()`, `onDisconnect()`/`onConnect()` for built-in events. Uses `VITE_SERVER_URL` env var or falls back to `window.location.origin`.
-- `src/code-editor.ts` — CodeMirror 6 wrapper with Python mode, one-dark theme, indentWithTab. Exposes `getCode()`, `setCode()`, `onChange()` (debounced 300ms). Constructor accepts optional `readOnly` boolean.
+- `src/code-editor.ts` — CodeMirror 6 wrapper with Python mode, indentWithTab. Exposes `getCode()`, `setCode()`, `onChange()` (debounced 300ms), `setTheme(isLight)`. Constructor accepts optional `readOnly` and `isLight` booleans. Theme is switched dynamically via a `Compartment` — no editor re-creation needed.
 - `src/code-executor.ts` — manages Pyodide Web Worker. Handles execute and runTests with timeouts; on timeout terminates and auto-recreates the worker.
 - `src/code-output.ts` — shared `renderOutput()`, `renderOutputLoading()`, `escapeHtml()` used by both student and teacher pages.
 - `src/code.css` — dark theme CSS, registration overlay styles.
@@ -92,5 +92,9 @@ The main `tsconfig.json` includes `"src"` and `"shared"` so frontend code can im
 **Frontend (GitHub Pages):** Push to `main` triggers `.github/workflows/deploy.yml`. Set `VITE_SERVER_URL` in GitHub Actions Variables to point to the backend server.
 
 **Backend (standalone server):** Clone repo, `npm install && cd server && npm install`, `npx vite build && npm run server:build`, then `cd server && node dist/server/src/index.js`. The server serves frontend static files from `dist/` so a single port handles everything. Requires Node ≥20 (use `unofficial-builds.nodejs.org` glibc-217 builds for older Ubuntu).
+
+### Theme system
+
+Both `code.html` and `teacher.html` support light/dark theme toggle. CSS custom properties on `:root` define the dark palette; `[data-theme="light"]` overrides them with a light palette. Theme state is persisted to `localStorage` under key `python-lab-theme`. The toggle button (☀/🌙 in the nav bar) flips `document.documentElement.dataset.theme` between `"light"` and absent (dark). `CodeEditor.setTheme(isLight)` syncs the CodeMirror instance to the current theme via a Compartment swap.
 
 This is a TypeScript learning/demo project — the verbose comments explaining TS concepts (type guards, function overloads, `as const`, generics) are intentional. Do not remove or shorten them.
