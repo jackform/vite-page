@@ -3,6 +3,14 @@ import { resolve } from 'path';
 
 export default defineConfig({
   base: '/vite-page/',
+  server: {
+    proxy: {
+      '/socket.io': {
+        target: 'http://localhost:3001',
+        ws: true,
+      },
+    },
+  },
   build: {
     outDir: 'dist',
     rollupOptions: {

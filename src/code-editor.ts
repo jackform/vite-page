@@ -1,5 +1,5 @@
 import { EditorView, basicSetup } from 'codemirror';
-import { EditorState } from '@codemirror/state';
+import { EditorState, Compartment } from '@codemirror/state';
 import { python } from '@codemirror/lang-python';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { keymap } from '@codemirror/view';
@@ -16,16 +16,18 @@ export class CodeEditor {
   private view: EditorView;
   private onChangeCallback: ((code: string) => void) | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private themeCompartment = new Compartment();
 
   constructor(
     container: HTMLElement,
     initialCode: string,
-    readOnly = false
+    readOnly = false,
+    isLight = false
   ) {
     const extensions = [
       basicSetup,
       python(),
-      oneDark,
+      this.themeCompartment.of(isLight ? [] : oneDark),
       keymap.of([indentWithTab]),
       EditorView.updateListener.of((update) => {
         if (update.docChanged && this.onChangeCallback) {
@@ -70,6 +72,13 @@ export class CodeEditor {
    */
   onChange(callback: (code: string) => void): void {
     this.onChangeCallback = callback;
+  }
+
+  /** Switch between light (code default) and dark (oneDark) themes. */
+  setTheme(isLight: boolean): void {
+    this.view.dispatch({
+      effects: this.themeCompartment.reconfigure(isLight ? [] : oneDark),
+    });
   }
 
   /** Destroy the editor and clean up resources. */

@@ -18,6 +18,8 @@ import { problems, defaultProblem } from './code-problems';
 import { renderOutput, renderOutputLoading, escapeHtml } from './code-output';
 import type { CodeProblem, ExecutionStatus, TestRunResult } from './code-types';
 
+const THEME_KEY = 'python-lab-theme';
+
 let app: HTMLElement;
 let editor: CodeEditor;
 let executor: CodeExecutor;
@@ -26,6 +28,41 @@ let socket: CodeSocket;
 let currentProblem: CodeProblem = defaultProblem;
 let isApplyingRemote = false;
 
+/* ---- Theme ---- */
+
+function loadTheme(): void {
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved === 'light') {
+    document.documentElement.dataset.theme = 'light';
+  } else {
+    delete document.documentElement.dataset.theme;
+  }
+}
+
+function isLightTheme(): boolean {
+  return document.documentElement.dataset.theme === 'light';
+}
+
+function toggleTheme(): void {
+  const current = document.documentElement.dataset.theme;
+  if (current === 'light') {
+    delete document.documentElement.dataset.theme;
+    localStorage.setItem(THEME_KEY, 'dark');
+  } else {
+    document.documentElement.dataset.theme = 'light';
+    localStorage.setItem(THEME_KEY, 'light');
+  }
+  updateThemeButton();
+  editor?.setTheme(isLightTheme());
+}
+
+function updateThemeButton(): void {
+  const btn = document.getElementById('btn-theme-toggle');
+  if (!btn) return;
+  const isLight = document.documentElement.dataset.theme === 'light';
+  btn.textContent = isLight ? '☀' : '🌙';
+}
+
 /* ---- Render Functions ---- */
 
 function renderLayout(): string {
@@ -33,6 +70,7 @@ function renderLayout(): string {
     <nav class="code-nav">
       <a href="./">← 返回個人主頁</a>
       <span class="code-nav-title">Python 程式設計實驗室</span>
+      <button class="btn-theme-toggle" id="btn-theme-toggle" title="切換主題">☀</button>
       <div class="conn-status">
         <span class="status-dot" id="conn-dot"></span>
         <span id="conn-text">Connected</span>
@@ -123,6 +161,8 @@ function renderConstraints(constraints: string[]): string {
 /* ---- Registration ---- */
 
 function initRegistration(): void {
+  loadTheme();
+
   app = document.getElementById('code-app') as HTMLElement;
   if (!app) return;
 
@@ -189,7 +229,7 @@ async function initLab(sessionInfo: {
     socket
   );
 
-  editor = new CodeEditor(editorPanel, currentProblem.starterCode);
+  editor = new CodeEditor(editorPanel, currentProblem.starterCode, false, isLightTheme());
 
   editor.onChange((code) => {
     if (isApplyingRemote) return;
@@ -216,6 +256,10 @@ async function initLab(sessionInfo: {
 
   socket.onDisconnect(() => updateConnStatus());
   socket.onConnect(() => updateConnStatus());
+
+  // Theme toggle
+  updateThemeButton();
+  document.getElementById('btn-theme-toggle')!.addEventListener('click', toggleTheme);
 
   executor = new CodeExecutor();
 
