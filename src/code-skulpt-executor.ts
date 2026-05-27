@@ -59,7 +59,7 @@ export class SkulptExecutor {
    * After execution we inject a flush call to hide the turtle and paint any
    * remaining buffered frames.
    */
-  async execute(code: string, timeoutMs = 8000): Promise<ExecutionResult> {
+  async execute(code: string, timeoutMs = 30000): Promise<ExecutionResult> {
     if (!this.ready) await this.load();
 
     // turtle.done() / mainloop() / exitonclick() are no-ops in Skulpt,
@@ -148,7 +148,7 @@ export class SkulptExecutor {
   /**
    * Run test cases — builds the same test harness pattern as the Pyodide executor.
    */
-  async runTests(code: string, testCases: TestCase[], timeoutMs = 8000): Promise<TestRunResult> {
+  async runTests(code: string, testCases: TestCase[], timeoutMs = 30000): Promise<TestRunResult> {
     const functionName = this.extractFunctionName(code);
     if (!functionName) {
       return {

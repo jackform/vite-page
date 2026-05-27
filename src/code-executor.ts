@@ -88,7 +88,7 @@ export class CodeExecutor {
    * If execution exceeds timeoutMs, the worker is terminated and recreated.
    * A fresh Pyodide load happens automatically in the new worker.
    */
-  async execute(code: string, timeoutMs = 5000): Promise<ExecutionResult> {
+  async execute(code: string, timeoutMs = 30000): Promise<ExecutionResult> {
     if (!this.ready || !this.worker) {
       await this.load();
     }
@@ -148,7 +148,7 @@ export class CodeExecutor {
    * 2. Iterates over test cases, calling the function with parsed input
    * 3. Prints results in a structured format for parsing
    */
-  async runTests(code: string, testCases: TestCase[], timeoutMs = 8000): Promise<TestRunResult> {
+  async runTests(code: string, testCases: TestCase[], timeoutMs = 30000): Promise<TestRunResult> {
     const functionName = this.extractFunctionName(code);
     if (!functionName) {
       return {
