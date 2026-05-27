@@ -14,6 +14,7 @@ export class CodeExecutor {
   private worker: Worker | null = null;
   private ready = false;
   private status: ExecutionStatus = 'idle';
+  private statusMessage: string | null = null;
   private statusChangeHandlers: Array<(status: ExecutionStatus) => void> = [];
 
   /** Start loading Pyodide in the worker. Returns a promise that resolves when ready. */
@@ -51,6 +52,9 @@ export class CodeExecutor {
           clearTimeout(timeout);
           this.setStatus('error');
           reject(new Error(e.data.error));
+        } else if (e.data.type === 'progress') {
+          // Packages are being downloaded — keep loading but update message
+          this.updateStatusMessage('Loading packages...');
         }
       };
 
@@ -66,6 +70,11 @@ export class CodeExecutor {
   /** Get the current executor status. */
   getStatus(): ExecutionStatus {
     return this.status;
+  }
+
+  /** Get a human-readable status message (e.g. "Loading packages..."). */
+  getStatusMessage(): string | null {
+    return this.statusMessage;
   }
 
   /** Listen for status changes (for UI updates). */
@@ -187,7 +196,14 @@ export class CodeExecutor {
 
   private setStatus(status: ExecutionStatus): void {
     this.status = status;
+    this.statusMessage = null; // clear transient messages
     this.statusChangeHandlers.forEach((h) => h(status));
+  }
+
+  private updateStatusMessage(message: string): void {
+    this.statusMessage = message;
+    // Also notify handlers so the UI can re-render
+    this.statusChangeHandlers.forEach((h) => h(this.status));
   }
 
   /**

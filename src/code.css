@@ -382,12 +382,14 @@ body {
   justify-content: center;
   min-height: 200px;
   border-bottom: 1px solid var(--code-border);
+  overflow: hidden;
 }
 
 .turtle-canvas-wrapper #turtle-canvas {
   width: 100%;
   min-height: 200px;
   position: relative;
+  overflow: hidden;
 }
 
 .turtle-canvas-wrapper canvas {

@@ -17,6 +17,10 @@ importScripts('https://cdn.jsdelivr.net/pyodide/v0.27.5/full/pyodide.js');
 async function init() {
   try {
     pyodide = await loadPyodide();
+    // Preload scientific Python packages so they're ready when needed.
+    // The browser caches them after the first download.
+    self.postMessage({ type: 'progress', stage: 'packages' });
+    await pyodide.loadPackage(['numpy', 'pandas', 'scikit-learn', 'scipy']);
     ready = true;
     self.postMessage({ type: 'ready' });
   } catch (err) {

@@ -315,7 +315,7 @@ async function initLab(sessionInfo: {
     localStorage.setItem(ENGINE_KEY, engine);
 
     executor.onStatusChange((status: ExecutionStatus) => {
-      updateStatusUI(status, statusText, statusDot, btnRun, btnTests);
+      updateStatusUI(status, statusText, statusDot, btnRun, btnTests, executor.getStatusMessage());
     });
 
     outputPanel.innerHTML = renderOutputLoading();
@@ -397,14 +397,15 @@ function updateStatusUI(
   statusText: HTMLElement,
   statusDot: Element,
   btnRun: HTMLButtonElement,
-  btnTests: HTMLButtonElement
+  btnTests: HTMLButtonElement,
+  customMessage?: string | null
 ): void {
   statusDot.className = 'status-dot';
 
   switch (status) {
     case 'loading':
       statusDot.classList.add('status-loading');
-      statusText.textContent = 'Loading Python...';
+      statusText.textContent = customMessage || 'Loading Python...';
       btnRun.disabled = true;
       btnTests.disabled = true;
       break;

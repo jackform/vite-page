@@ -40,6 +40,10 @@ export class SkulptExecutor {
     return this.status;
   }
 
+  getStatusMessage(): string | null {
+    return null; // Skulpt loads instantly, no package messages
+  }
+
   onStatusChange(handler: (status: ExecutionStatus) => void): void {
     this.statusChangeHandlers.push(handler);
   }
