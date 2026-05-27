@@ -357,6 +357,43 @@ body {
   50% { opacity: 0.3; }
 }
 
+.engine-select {
+  background: var(--code-bg-secondary);
+  color: var(--code-text-primary);
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.engine-select:focus {
+  outline: none;
+  border-color: var(--code-accent);
+}
+
+/* ---- Turtle Canvas ---- */
+
+.turtle-canvas-wrapper {
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  border-bottom: 1px solid var(--code-border);
+}
+
+.turtle-canvas-wrapper #turtle-canvas {
+  width: 100%;
+  min-height: 200px;
+  position: relative;
+}
+
+.turtle-canvas-wrapper canvas {
+  display: block;
+}
+
 /* ---- Output Panel ---- */
 
 .output-panel {

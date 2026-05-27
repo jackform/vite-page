@@ -10,23 +10,29 @@
  */
 
 import './code.css';
+import Sk from 'skulpt';
 import { CodeEditor } from './code-editor';
 import { CodeExecutor } from './code-executor';
+import { SkulptExecutor } from './code-skulpt-executor';
 import { CodeSession } from './code-session';
 import { CodeSocket } from './code-socket';
 import { problems, defaultProblem } from './code-problems';
 import { renderOutput, renderOutputLoading, escapeHtml } from './code-output';
-import type { CodeProblem, ExecutionStatus, TestRunResult } from './code-types';
+import type { CodeProblem, ExecutionStatus } from './code-types';
 
 const THEME_KEY = 'python-lab-theme';
+const ENGINE_KEY = 'python-lab-engine';
+
+type EngineType = 'pyodide' | 'skulpt';
 
 let app: HTMLElement;
 let editor: CodeEditor;
-let executor: CodeExecutor;
+let executor: CodeExecutor | SkulptExecutor;
 let session: CodeSession;
 let socket: CodeSocket;
 let currentProblem: CodeProblem = defaultProblem;
 let isApplyingRemote = false;
+let currentEngine: EngineType = 'pyodide';
 
 /* ---- Theme ---- */
 
@@ -84,10 +90,17 @@ function renderLayout(): string {
           <button class="btn btn-run" id="btn-run" disabled>▶ Run</button>
           <button class="btn btn-tests" id="btn-tests" disabled>✓ Run Tests</button>
           <button class="btn btn-problem" id="btn-problem">切換題目</button>
+          <select class="engine-select" id="engine-select" title="Python 引擎">
+            <option value="pyodide">Pyodide</option>
+            <option value="skulpt">Skulpt</option>
+          </select>
           <div class="executor-status" id="executor-status">
             <span class="status-dot status-loading"></span>
             <span id="status-text">Loading Python...</span>
           </div>
+        </div>
+        <div class="turtle-canvas-wrapper hidden" id="turtle-canvas-wrapper">
+          <div id="turtle-canvas"></div>
         </div>
         <div class="output-panel" id="output-panel">
           <div class="output-placeholder">Python environment is loading, please wait...</div>
@@ -261,17 +274,66 @@ async function initLab(sessionInfo: {
   updateThemeButton();
   document.getElementById('btn-theme-toggle')!.addEventListener('click', toggleTheme);
 
-  executor = new CodeExecutor();
+  // Engine selector
+  const engineSelect = document.getElementById('engine-select') as HTMLSelectElement;
+  const turtleWrapper = document.getElementById('turtle-canvas-wrapper')!;
 
-  executor.onStatusChange((status: ExecutionStatus) => {
-    updateStatusUI(status, statusText, statusDot, btnRun, btnTests);
-  });
+  const savedEngine = localStorage.getItem(ENGINE_KEY) as EngineType | null;
+  if (savedEngine === 'skulpt' || savedEngine === 'pyodide') {
+    currentEngine = savedEngine;
+    engineSelect.value = savedEngine;
+  }
 
-  executor.load().then(() => {
-    // Ready — update UI handled by onStatusChange
-  }).catch((err) => {
-    console.error('Pyodide failed to load:', err);
-    outputPanel.innerHTML = `<div class="output-stderr">Failed to load Python environment: ${escapeHtml(err.message)}</div>`;
+  function createExecutor(engine: EngineType): void {
+    executor?.destroy();
+    turtleWrapper.classList.add('hidden');
+
+    if (engine === 'skulpt') {
+      turtleWrapper.classList.remove('hidden');
+      try {
+        // Sk.TurtleGraphics is created by the turtle module on first import.
+        // Pre-configure it so the module finds the right canvas element.
+        if (!(Sk as any).TurtleGraphics) {
+          (Sk as any).TurtleGraphics = {};
+        }
+        (Sk as any).TurtleGraphics.target = 'turtle-canvas';
+        executor = new SkulptExecutor('turtle-canvas');
+      } catch (err: any) {
+        console.error('Skulpt init failed:', err);
+        outputPanel.innerHTML = `<div class="output-stderr">Failed to start Skulpt: ${escapeHtml(err.message)}</div>`;
+        // Fall back to Pyodide
+        engineSelect.value = 'pyodide';
+        localStorage.setItem(ENGINE_KEY, 'pyodide');
+        currentEngine = 'pyodide';
+        executor = new CodeExecutor();
+      }
+    } else {
+      executor = new CodeExecutor();
+    }
+
+    currentEngine = engine;
+    localStorage.setItem(ENGINE_KEY, engine);
+
+    executor.onStatusChange((status: ExecutionStatus) => {
+      updateStatusUI(status, statusText, statusDot, btnRun, btnTests);
+    });
+
+    outputPanel.innerHTML = renderOutputLoading();
+    executor.load().then(() => {
+      outputPanel.innerHTML = '<div class="output-placeholder">Ready. Press Run to execute.</div>';
+    }).catch((err) => {
+      console.error(`${engine} failed to load:`, err);
+      outputPanel.innerHTML = `<div class="output-stderr">Failed to load ${engine}: ${escapeHtml(err.message)}</div>`;
+    });
+  }
+
+  createExecutor(currentEngine);
+
+  engineSelect.addEventListener('change', () => {
+    const engine = engineSelect.value as EngineType;
+    if (engine !== currentEngine) {
+      createExecutor(engine);
+    }
   });
 
   async function handleRun(): Promise<void> {
