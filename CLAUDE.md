@@ -14,6 +14,8 @@ npm run server:build  # Compile server TypeScript → server/dist/
 
 No test runner or linter is configured.
 
+Frontend dependencies: `vite`, `codemirror` + `@codemirror/*`, `socket.io-client`, `marked` (Markdown → HTML).
+
 ## Architecture
 
 Four standalone pages, no framework — TypeScript manipulating the DOM via `innerHTML` and template strings. Dependencies: `vite`, `codemirror` + `@codemirror/*`.
@@ -45,37 +47,68 @@ Node.js + Express + Socket.io server that powers the real-time student-teacher s
 | `teacher:auth` | Teacher → Server | Password authentication |
 | `room:subscribe` / `room:unsubscribe` | Teacher → Server | Watch/unwatch a student |
 | `roster:update` | Server → Teacher | Full student list |
+| `problem:push` | Teacher → Server | Push a problem to one student's inbox |
+| `problem:push-all` | Teacher → Server | Push a problem to all connected students |
+| `problem:assigned` | Server → Student | New problem arrived in inbox |
 
-Server stores latest code and execution result per student in `RoomManager`. When a teacher subscribes to a room, the cached state is sent immediately.
+Server stores latest code and execution result per student in `RoomManager` (also caches `assignedProblem`). When a teacher subscribes to a room, the cached state (code, execution, assigned problem) is sent immediately.
 
 ### Coding lab page (`code.html` → `src/code.ts`)
 
-A LeetCode-style Python coding platform with CodeMirror 6 editor, Pyodide-based Python execution in a Web Worker, real-time code sync to backend, and a test runner. Chinese-localized (zh-HK), dark theme.
+A LeetCode-style Python coding platform with CodeMirror 6 editor, Pyodide-based Python execution in a Web Worker, real-time code sync to backend, and a test runner. Chinese-localized (zh-HK), dark/light theme.
 
-**Lifecycle:** `DOMContentLoaded` → renders registration overlay (name + studentId) → on submit, `CodeSocket.register()` connects to backend via Socket.io → on success, renders editor layout, mounts CodeMirror, loads Pyodide, wires Run/Tests buttons.
+**Lifecycle:** `DOMContentLoaded` → renders registration overlay (name + studentId) → on submit, `CodeSocket.register()` connects to backend via Socket.io → on success, loads problem list from `GET /api/problems`, renders editor layout, mounts CodeMirror, loads Pyodide, wires Run/Tests buttons.
 
 **Source modules (all prefixed `code-`):**
 - `src/code-types.ts` — types for CodeProblem, TestCase, ExecutionResult, SessionConfig, etc.
-- `src/code-problems.ts` — hardcoded problems (Two Sum, FizzBuzz) with starter code and test cases
+- `src/code-problems.ts` — hardcoded fallback problems, used only when the API is unreachable.
 - `src/code-session.ts` — `CodeSession` class wraps local code state and syncs to server via `CodeSocket`. `updateCode()` sends `code:update` over socket. Student does NOT listen to `code:broadcast` (only teacher does).
-- `src/code-socket.ts` — Socket.io client wrapper. `register(identity)` connects and waits for `session:registered`. `sendCodeUpdate()`, `sendExecutionResult()`, `onDisconnect()`/`onConnect()` for built-in events. Uses `VITE_SERVER_URL` env var or falls back to `window.location.origin`.
-- `src/code-editor.ts` — CodeMirror 6 wrapper with Python mode, indentWithTab. Exposes `getCode()`, `setCode()`, `onChange()` (debounced 300ms), `setTheme(isLight)`. Constructor accepts optional `readOnly` and `isLight` booleans. Theme is switched dynamically via a `Compartment` — no editor re-creation needed.
+- `src/code-socket.ts` — Socket.io client wrapper. `register(identity)` connects and waits for `session:registered`. Generic `on`/`off` methods for typed event listening (used for `problem:assigned`). Uses `VITE_SERVER_URL` env var or falls back to `window.location.origin`.
+- `src/code-editor.ts` — CodeMirror 6 wrapper with Python mode, indentWithTab. Exposes `getCode()`, `setCode()`, `onChange()` (debounced 300ms), `setTheme(isLight)`. Constructor accepts optional `readOnly` and `isLight` booleans. Theme is switched dynamically via a `Compartment` — no editor re-creation needed. Also used by `ProblemManager` in teacher page.
 - `src/code-executor.ts` — manages Pyodide Web Worker. Handles execute and runTests with timeouts; on timeout terminates and auto-recreates the worker.
 - `src/code-output.ts` — shared `renderOutput()`, `renderOutputLoading()`, `escapeHtml()` used by both student and teacher pages.
-- `src/code.css` — dark theme CSS, registration overlay styles.
+- `src/code.css` — dark/light theme CSS, registration overlay styles, notification toast (`.lab-notification`).
 
 **Web Worker** (`public/code-worker.js`): Classic worker using `importScripts` to load Pyodide from CDN. Placed in `public/` so Vite serves it as-is without processing.
 
-### Teacher dashboard (`teacher.html` → `src/teacher.ts`)
+**Problem loading:** On init, fetches `GET /api/problems` for the full list (storing metadata for the dropdown), then `GET /api/problems/:id` for the first problem's full content. Additional problems load on demand when selected from the dropdown. `marked` renders Markdown descriptions with GFM line breaks. A `problem:assigned` Socket listener handles teacher-pushed problems by adding them to the local cache and switching immediately.
 
-Real-time student monitoring page. Dark theme matching code.css.
+### Teacher dashboard (`teacher.html` → `src/teacher.ts` + `src/problem-manager.ts`)
 
-**Lifecycle:** `DOMContentLoaded` → auth overlay (password form) → on success, renders dashboard: sidebar roster panel + main monitor area with read-only CodeMirror viewer and execution output panel.
+Real-time student monitoring page with two-tab layout: "學生監控" and "題目管理". Dark/light theme.
 
-- Roster updates via `roster:update` events. Click a student to subscribe to their room.
-- Code viewer: read-only `CodeEditor` instance, updates on `code:broadcast`.
+**Lifecycle:** `DOMContentLoaded` → auth overlay (password form) → on success, renders dashboard with tab bar. Monitor tab active by default; problem tab lazily initializes `ProblemManager` on first click.
+
+**Monitor tab:**
+- Sidebar roster panel (updates via `roster:update`). Click a student to subscribe to their room.
+- Push bar below student info: dropdown to select a problem (populated from `ProblemManager.getProblems()`), "推送給此學生" and "推送給所有學生" buttons.
+- Read-only `CodeEditor` viewer, updates on `code:broadcast`.
 - Execution output rendered with shared `renderOutput()` from `code-output.ts`.
-- Reconnect: re-authenticates and re-subscribes to selected room.
+
+**Problem management tab:**
+- `ProblemManager` class (`src/problem-manager.ts`) — standalone component with three-column layout: problem list sidebar | edit form | live preview.
+- Edit form fields: title, difficulty, category, tags, description (Markdown textarea), examples/constraints/testCases (dynamic add/remove rows), starter code (`CodeEditor`), solution & hints (collapsible details).
+- Markdown preview rendered via `marked.parse()` with GFM line breaks enabled.
+- CRUD via REST API (`GET/POST/PUT/DELETE /api/problems`). Import/export single `.json` files.
+- `ProblemManager.setTheme(isLight)` syncs its two `CodeEditor` instances with the theme toggle.
+
+### Problem storage (`server/data/problems/`)
+
+Problems stored as individual JSON files (`{id}.json`) with an `index.json` manifest (scheme B: multi-JSON + index). Server module `server/src/problem-store.ts` handles file I/O with robust multi-path resolution for dev (`tsx`) and production (`node dist/`) environments.
+
+The `CodeProblem` data model is shared: title, difficulty, description (Markdown, rendered via `marked`), examples, constraints, starterCode, testCases. Teacher-only fields: solution, hints.
+
+### REST API
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/problems` | List all problems (metadata only) |
+| `GET` | `/api/problems/:id` | Get full problem detail |
+| `POST` | `/api/problems` | Create new problem |
+| `PUT` | `/api/problems/:id` | Update existing problem |
+| `DELETE` | `/api/problems/:id` | Delete problem |
+
+Vite dev server proxies `/api` to `localhost:3001`.
 
 ### Main profile page (`index.html` → `src/main.ts`) and Poster page (`poster.html` → `src/poster.ts`)
 
@@ -95,6 +128,10 @@ The main `tsconfig.json` includes `"src"` and `"shared"` so frontend code can im
 
 ### Theme system
 
-Both `code.html` and `teacher.html` support light/dark theme toggle. CSS custom properties on `:root` define the dark palette; `[data-theme="light"]` overrides them with a light palette. Theme state is persisted to `localStorage` under key `python-lab-theme`. The toggle button (☀/🌙 in the nav bar) flips `document.documentElement.dataset.theme` between `"light"` and absent (dark). `CodeEditor.setTheme(isLight)` syncs the CodeMirror instance to the current theme via a Compartment swap.
+Both `code.html` and `teacher.html` support light/dark theme toggle. CSS custom properties on `:root` define the dark palette; `[data-theme="light"]` overrides them with a light palette. All CSS variables must be defined in both `:root` and `[data-theme="light"]` — do not rely on hardcoded fallback colors, as they will break the light theme.
+
+Variables: `--bg-primary`, `--bg-secondary`, `--bg-tertiary`, `--bg-surface`, `--bg-hover`, `--bg-input`, `--accent-bg`, `--text-primary`, `--text-secondary`, `--text-tertiary`, `--text-muted`, `--border-color`, `--accent`, `--accent-green`, `--accent-red`, `--accent-yellow`.
+
+Theme state is persisted to `localStorage` under key `python-lab-theme`. The toggle button (☀/🌙 in the nav bar) flips `document.documentElement.dataset.theme` between `"light"` and absent (dark). Any component with a `CodeEditor` instance must call `CodeEditor.setTheme(isLight)` on toggle; `ProblemManager` exposes a `setTheme(isLight)` method for this purpose.
 
 This is a TypeScript learning/demo project — the verbose comments explaining TS concepts (type guards, function overloads, `as const`, generics) are intentional. Do not remove or shorten them.
