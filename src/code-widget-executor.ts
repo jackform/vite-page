@@ -2,16 +2,30 @@ import type { ExecutionResult, ExecutionStatus } from './code-types';
 
 /** Widget creation command sent from Python worker to main thread. */
 export interface WidgetCommand {
-  cmd: 'create' | 'destroy';
+  cmd: 'create' | 'destroy' | 'configure' | 'messagebox';
   id: number;
-  type?: 'button' | 'label' | 'entry' | 'text';
+  type?: 'root' | 'toplevel' | 'frame' | 'labelframe' | 'button' | 'label' | 'entry' | 'text';
+  parentId?: number;
   props?: Record<string, string>;
   layout?: {
+    type?: 'pack' | 'grid';
     side?: string;
     fill?: string | null;
     padx?: number;
     pady?: number;
+    row?: number;
+    column?: number;
+    [key: string]: unknown;
   };
+  title?: string;
+  message?: string;
+  messageboxType?: 'showwarning' | 'showinfo';
+}
+
+/** Callback result that may include widget commands (e.g. Toplevel from show_rules). */
+export interface CallbackResult extends ExecutionResult {
+  widgetId?: number;
+  widgets?: WidgetCommand[];
 }
 
 /** Extended execution result that includes widget commands. */
@@ -34,7 +48,11 @@ export class CodeWidgetExecutor {
   private status: ExecutionStatus = 'idle';
   private statusMessage: string | null = null;
   private statusChangeHandlers: Array<(status: ExecutionStatus) => void> = [];
-  private callbackHandler: ((result: ExecutionResult) => void) | null = null;
+  private callbackHandler: ((result: CallbackResult) => void) | null = null;
+  /** Registry of created widget elements by id, for configure/destroy/parent-child lookup. */
+  private widgetElements: Map<number, HTMLElement> = new Map();
+  /** Pending configure props for widgets not yet created (insert before pack). */
+  private pendingConfigures: Map<number, Record<string, string>> = new Map();
 
   /** Start loading Pyodide + packages + webtkinter in the worker. */
   async load(): Promise<void> {
@@ -154,13 +172,10 @@ export class CodeWidgetExecutor {
 
   /**
    * Render widget output into a container element.
-   *
-   * Creates real DOM elements for each widget and attaches event
-   * listeners that forward clicks back to the worker. Stdout/stderr
-   * text is rendered above the widgets.
    */
   renderWidgetOutput(container: HTMLElement, result: WidgetExecutionResult): void {
     container.innerHTML = '';
+    this.widgetElements.clear();
 
     // Stdout text
     if (result.stdout.trim()) {
@@ -202,10 +217,7 @@ export class CodeWidgetExecutor {
       widgetContainer.className = 'widget-container';
 
       for (const w of widgets) {
-        if (w.cmd === 'create') {
-          const el = this.createWidgetElement(w);
-          if (el) widgetContainer.appendChild(el);
-        }
+        this.processWidgetCommand(w, widgetContainer);
       }
 
       container.appendChild(widgetContainer);
@@ -217,8 +229,47 @@ export class CodeWidgetExecutor {
     container.appendChild(cbOutput);
   }
 
+  /**
+   * Render widgets that arrive during a callback (e.g. Toplevel created by show_rules,
+   * configure commands from Text.insert/delete, messagebox commands).
+   *
+   * Only Toplevel/messagebox widgets get an overlay. Configure commands are applied
+   * directly to existing elements without blocking the UI.
+   */
+  renderCallbackWidgets(widgets: WidgetCommand[]): void {
+    if (!widgets.length) return;
+
+    // Split: overlay widgets vs direct widgets
+    const needsOverlay = widgets.filter(
+      w => w.type === 'toplevel' || w.cmd === 'messagebox'
+    );
+    const direct = widgets.filter(
+      w => w.type !== 'toplevel' && w.cmd !== 'messagebox'
+    );
+
+    // Apply direct widgets (configure, etc.) to existing elements
+    for (const w of direct) {
+      this.processWidgetCommand(w, document.getElementById('output-panel')!);
+    }
+
+    // Render overlay widgets (Toplevel, messagebox)
+    if (needsOverlay.length > 0) {
+      let overlay = document.getElementById('widget-callback-overlay');
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'widget-callback-overlay';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:1000;';
+        document.getElementById('output-panel')?.appendChild(overlay);
+      }
+
+      for (const w of needsOverlay) {
+        this.processWidgetCommand(w, overlay);
+      }
+    }
+  }
+
   /** Register a handler to receive callback results from widget clicks. */
-  onCallbackResult(handler: (result: ExecutionResult) => void): void {
+  onCallbackResult(handler: (result: CallbackResult) => void): void {
     this.callbackHandler = handler;
 
     if (!this.worker) return;
@@ -229,6 +280,8 @@ export class CodeWidgetExecutor {
           status: e.data.status,
           stdout: e.data.stdout || '',
           stderr: e.data.stderr || '',
+          widgetId: e.data.widgetId,
+          widgets: e.data.widgets || [],
         });
       }
     };
@@ -241,6 +294,7 @@ export class CodeWidgetExecutor {
     this.terminateWorker();
     this.ready = false;
     this.setStatus('idle');
+    this.widgetElements.clear();
   }
 
   // ---- Private helpers ----
@@ -259,6 +313,8 @@ export class CodeWidgetExecutor {
             status: e.data.status,
             stdout: e.data.stdout || '',
             stderr: e.data.stderr || '',
+            widgetId: e.data.widgetId,
+            widgets: e.data.widgets || [],
           });
         }
       };
@@ -284,67 +340,359 @@ export class CodeWidgetExecutor {
     this.statusChangeHandlers.forEach((h) => h(this.status));
   }
 
-  private createWidgetElement(w: WidgetCommand): HTMLElement | null {
-    const props = w.props || {};
-    const layout = w.layout || {};
-    let el: HTMLElement;
-
-    switch (w.type) {
-      case 'button': {
-        el = document.createElement('button');
-        el.className = 'widget-button';
-        el.textContent = props['text'] || '';
-        el.addEventListener('click', () => {
-          if (this.worker) {
-            this.worker.postMessage({
-              type: 'widget:event',
-              widgetId: w.id,
-              event: 'click',
-            });
+  /**
+   * Process a widget command — create, configure, messagebox, or destroy.
+   * Returns the created element for 'create', or null for other commands.
+   */
+  private processWidgetCommand(w: WidgetCommand, defaultParent: HTMLElement): HTMLElement | null {
+    switch (w.cmd) {
+      case 'create': {
+        const el = this.createWidgetElement(w, defaultParent);
+        if (el) {
+          this.widgetElements.set(w.id, el);
+          // Resolve parent: use parentId if present, otherwise append to defaultParent
+          if (w.parentId !== undefined && this.widgetElements.has(w.parentId)) {
+            this.widgetElements.get(w.parentId)!.appendChild(el);
+          } else {
+            defaultParent.appendChild(el);
           }
-        });
-        break;
+          // Apply any pending configure props (e.g. Entry.insert before pack)
+          const pending = this.pendingConfigures.get(w.id);
+          if (pending) {
+            this.applyPropsToElement(el, pending);
+            this.applySpecialProps(el, pending);
+            this.pendingConfigures.delete(w.id);
+          }
+        }
+        return el;
       }
-      case 'label': {
-        el = document.createElement('span');
-        el.className = 'widget-label';
-        el.textContent = props['text'] || '';
-        break;
+      case 'configure': {
+        const existing = this.widgetElements.get(w.id);
+        if (existing && w.props) {
+          this.applyPropsToElement(existing, w.props);
+          this.applySpecialProps(existing, w.props);
+        } else if (w.props) {
+          // Widget not created yet — store props for when create arrives
+          const pending = this.pendingConfigures.get(w.id) || {};
+          Object.assign(pending, w.props);
+          this.pendingConfigures.set(w.id, pending);
+        }
+        return null;
       }
-      case 'entry': {
-        el = document.createElement('input');
-        el.className = 'widget-entry';
-        el.setAttribute('type', 'text');
-        el.setAttribute('placeholder', props['placeholder'] || '');
-        el.setAttribute('id', 'widget-' + w.id);
-        break;
+      case 'messagebox': {
+        const title = w.title || 'Message';
+        const message = w.message || '';
+        if (w.messageboxType === 'showwarning') {
+          alert('⚠ ' + title + '\n\n' + message);
+        } else if (w.messageboxType === 'showinfo') {
+          alert('ℹ ' + title + '\n\n' + message);
+        }
+        return null;
       }
-      case 'text': {
-        el = document.createElement('pre');
-        el.className = 'widget-text';
-        el.textContent = props['text'] || '';
-        break;
+      case 'destroy': {
+        const el = this.widgetElements.get(w.id);
+        if (el) {
+          el.remove();
+          this.widgetElements.delete(w.id);
+        }
+        return null;
       }
       default:
         return null;
     }
+  }
 
-    // Apply layout: wrap in a div that respects pack() options
+  private createWidgetElement(w: WidgetCommand, defaultParent: HTMLElement): HTMLElement | null {
+    const props = w.props || {};
+    const layout = w.layout || {};
+
+    switch (w.type) {
+      case 'root': {
+        const root = document.createElement('div');
+        root.className = 'widget-root';
+        root.id = 'widget-root';
+
+        // Title bar
+        const titleBar = document.createElement('div');
+        titleBar.className = 'widget-titlebar';
+        titleBar.textContent = props['title'] || '';
+        root.appendChild(titleBar);
+
+        // Content area (children will be appended here)
+        const content = document.createElement('div');
+        content.className = 'widget-root-content';
+        root.appendChild(content);
+
+        // Store the content area as the element for child widget parenting
+        this.widgetElements.set(w.id, content);
+
+        // Apply bg / geometry
+        if (props['bg']) root.style.backgroundColor = props['bg'];
+        const geom = props['geometry'];
+        if (geom) {
+          const m = geom.match(/(\d+)x(\d+)/);
+          if (m) {
+            root.style.width = m[1] + 'px';
+            root.style.minHeight = m[2] + 'px';
+          }
+        }
+        return root;
+      }
+
+      case 'toplevel': {
+        const overlay = document.createElement('div');
+        overlay.className = 'widget-toplevel-overlay';
+        overlay.id = 'widget-toplevel-overlay-' + w.id;
+
+        const top = document.createElement('div');
+        top.className = 'widget-toplevel';
+        if (props['bg']) top.style.backgroundColor = props['bg'];
+        const geom = props['geometry'];
+        if (geom) {
+          const m = geom.match(/(\d+)x(\d+)/);
+          if (m) {
+            top.style.width = m[1] + 'px';
+            top.style.minHeight = m[2] + 'px';
+          }
+        }
+
+        // Title bar
+        const titleBar = document.createElement('div');
+        titleBar.className = 'widget-toplevel-titlebar';
+        const titleText = document.createElement('span');
+        titleText.textContent = props['title'] || '';
+        titleBar.appendChild(titleText);
+
+        // Close button
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'widget-toplevel-close';
+        closeBtn.textContent = '✕';
+        closeBtn.addEventListener('click', () => overlay.remove());
+        titleBar.appendChild(closeBtn);
+        top.appendChild(titleBar);
+
+        // Content area
+        const content = document.createElement('div');
+        content.className = 'widget-toplevel-content';
+        top.appendChild(content);
+        overlay.appendChild(top);
+
+        // Store content as the element for child widget parenting
+        this.widgetElements.set(w.id, content);
+        return overlay;
+      }
+
+      case 'frame': {
+        const frame = document.createElement('div');
+        frame.className = 'widget-frame';
+        if (props['bg']) frame.style.backgroundColor = props['bg'];
+        if (layout.type === 'grid') {
+          frame.classList.add('widget-frame-grid');
+        }
+        return frame;
+      }
+
+      case 'labelframe': {
+        const fieldset = document.createElement('fieldset');
+        fieldset.className = 'widget-fieldset';
+        if (props['bg']) fieldset.style.backgroundColor = props['bg'];
+
+        const legend = document.createElement('legend');
+        legend.className = 'widget-legend';
+        legend.textContent = props['text'] || '';
+        fieldset.appendChild(legend);
+        return fieldset;
+      }
+
+      case 'button': {
+        const btn = document.createElement('button');
+        btn.className = 'widget-button';
+        btn.textContent = props['text'] || '';
+        this.applyPropsToElement(btn, props);
+        this.attachEventForwarders(btn, w.id);
+        return this.wrapWithLayout(btn, layout);
+      }
+
+      case 'label': {
+        const lbl = document.createElement('span');
+        lbl.className = 'widget-label';
+        lbl.textContent = props['text'] || '';
+        // Make label look clickable if it has event bindings
+        lbl.style.cursor = 'pointer';
+        this.applyPropsToElement(lbl, props);
+        this.attachEventForwarders(lbl, w.id);
+        return this.wrapWithLayout(lbl, layout);
+      }
+
+      case 'entry': {
+        const input = document.createElement('input');
+        input.className = 'widget-entry';
+        input.setAttribute('type', 'text');
+        input.setAttribute('placeholder', props['placeholder'] || '');
+        input.setAttribute('id', 'widget-' + w.id);
+        if (props['value']) input.value = props['value'];
+        this.applyPropsToElement(input, props);
+        return this.wrapWithLayout(input, layout);
+      }
+
+      case 'text': {
+        const ta = document.createElement('textarea');
+        ta.className = 'widget-text';
+        ta.value = props['text'] || '';
+        ta.setAttribute('id', 'widget-' + w.id);
+        this.applyPropsToElement(ta, props);
+        return this.wrapWithLayout(ta, layout);
+      }
+
+      default:
+        return null;
+    }
+  }
+
+  /** Apply special props that aren't CSS (title, value, etc.). */
+  private applySpecialProps(el: HTMLElement, props: Record<string, string>): void {
+    // Handle title prop: update titlebar text for root/toplevel
+    if (props['title'] !== undefined) {
+      const titleBar = el.querySelector('.widget-titlebar, .widget-toplevel-titlebar') as HTMLElement;
+      if (titleBar) {
+        const span = titleBar.querySelector('span');
+        if (span) {
+          span.textContent = props['title'];
+        } else {
+          const textNode = Array.from(titleBar.childNodes).find(n => n.nodeType === 3);
+          if (textNode) textNode.textContent = props['title'];
+        }
+      }
+    }
+    // Handle value prop: find input/textarea within element (may be wrapped)
+    if (props['value'] !== undefined) {
+      const input = el.querySelector('input, textarea') as HTMLInputElement | HTMLTextAreaElement | null;
+      if (input) input.value = props['value'];
+    }
+    // Handle text prop: find textarea within element
+    if (props['text'] !== undefined) {
+      const ta = el.querySelector('textarea') as HTMLTextAreaElement | null;
+      if (ta) ta.value = props['text'];
+    }
+  }
+
+  /** Attach event forwarders for user interactions. */
+  private attachEventForwarders(el: HTMLElement, widgetId: number): void {
+    const events = ['click', 'mouseenter', 'mouseleave'];
+    for (const evt of events) {
+      el.addEventListener(evt, () => {
+        if (this.worker) {
+          this.worker.postMessage({
+            type: 'widget:event',
+            widgetId: widgetId,
+            event: evt,
+            inputValues: this.collectInputValues(),
+          });
+        }
+      });
+    }
+  }
+
+  /** Collect current values of all Entry and Text widgets for the worker. */
+  private collectInputValues(): Record<string, string> {
+    const values: Record<string, string> = {};
+    document.querySelectorAll('.widget-entry[id], .widget-text[id]').forEach((el) => {
+      const id = el.id;
+      if (id && id.startsWith('widget-')) {
+        values[id.replace('widget-', '')] = (el as HTMLInputElement | HTMLTextAreaElement).value;
+      }
+    });
+    return values;
+  }
+
+  /** Wrap an element in a layout div respecting pack()/grid() options. */
+  private wrapWithLayout(el: HTMLElement, layout: WidgetCommand['layout']): HTMLElement {
     const wrapper = document.createElement('div');
     wrapper.className = 'widget-wrapper';
-    wrapper.style.display = 'inline-block';
-    wrapper.style.padding = `${layout.pady || 2}px ${layout.padx || 4}px`;
 
-    if (layout.fill === 'x') {
-      wrapper.style.display = 'block';
-      (el as HTMLElement).style.width = '100%';
-    } else if (layout.fill === 'both') {
-      wrapper.style.display = 'block';
-      (el as HTMLElement).style.width = '100%';
-      el.style.height = '100%';
+    const type = layout?.type || 'pack';
+
+    if (type === 'grid') {
+      wrapper.style.display = 'inline-grid';
+      if (layout?.row !== undefined) wrapper.style.gridRow = String(layout.row + 1);
+      if (layout?.column !== undefined) wrapper.style.gridColumn = String(layout.column + 1);
+      wrapper.style.padding = `${layout?.pady || 2}px ${layout?.padx || 4}px`;
+    } else {
+      wrapper.style.display = 'inline-block';
+      wrapper.style.padding = `${layout?.pady || 2}px ${layout?.padx || 4}px`;
+
+      const fill = layout?.fill;
+      if (fill === 'x') {
+        wrapper.style.display = 'block';
+        el.style.width = '100%';
+      } else if (fill === 'both') {
+        wrapper.style.display = 'block';
+        el.style.width = '100%';
+        el.style.height = '100%';
+      }
     }
 
     wrapper.appendChild(el);
     return wrapper;
+  }
+
+  /**
+   * Apply tkinter props to a DOM element as CSS.
+   * Supported: font, bg, fg, width, height, justify, state.
+   * Unsupported props are silently ignored.
+   */
+  private applyPropsToElement(el: HTMLElement, props: Record<string, string>): void {
+    if (props['bg']) el.style.backgroundColor = props['bg'];
+    if (props['fg']) el.style.color = props['fg'];
+    if (props['font']) el.style.font = this.parseFont(props['font']);
+    if (props['width']) {
+      const w = parseInt(props['width'], 10);
+      if (!isNaN(w)) {
+        if (el instanceof HTMLInputElement) el.style.width = (w * 1.2) + 'ch';
+        else el.style.width = w + 'ch';
+      }
+    }
+    if (props['height']) {
+      const h = parseInt(props['height'], 10);
+      if (!isNaN(h)) el.style.height = (h * 1.5) + 'em';
+    }
+    if (props['justify']) {
+      const j = props['justify'];
+      if (j === 'left' || j === 'center' || j === 'right') {
+        el.style.textAlign = j;
+      }
+    }
+    if (props['state'] === 'disabled') {
+      const input = el.querySelector('input, textarea') || el;
+      if (input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement) {
+        input.readOnly = true;
+      }
+      el.classList.add('widget-text-disabled');
+    }
+    if (props['value'] !== undefined) {
+      const input = el.querySelector('input') as HTMLInputElement | null;
+      if (input) input.value = props['value'];
+    }
+    if (props['text'] !== undefined) {
+      const ta = el.querySelector('textarea') as HTMLTextAreaElement | null;
+      if (ta) ta.value = props['text'];
+    }
+  }
+
+  /** Convert a tkinter font spec to a CSS font shorthand string. */
+  private parseFont(fontSpec: string): string {
+    // Already a CSS string
+    if (/^\d+px/.test(fontSpec) || /^(normal|bold|italic)/.test(fontSpec)) {
+      return fontSpec;
+    }
+    // Try parsing Python tuple-like string: "('微软雅黑', 20, 'bold')"
+    const m = fontSpec.match(/^['"](.+)['"],\s*(\d+)(?:,\s*['"](.+)['"])?/);
+    if (m) {
+      const family = m[1];
+      const size = m[2] + 'px';
+      const weight = m[3] || 'normal';
+      return `${weight} ${size} '${family}'`;
+    }
+    return fontSpec;
   }
 }

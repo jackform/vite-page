@@ -310,6 +310,10 @@ async function initLab(sessionInfo: {
       executor = new CodeWidgetExecutor();
       // Wire up callback results from widget button clicks
       (executor as CodeWidgetExecutor).onCallbackResult((cbResult) => {
+        // Render any widgets created during the callback (e.g. Toplevel)
+        if (cbResult.widgets && cbResult.widgets.length > 0) {
+          (executor as CodeWidgetExecutor).renderCallbackWidgets(cbResult.widgets);
+        }
         const cbContainer = document.getElementById('widget-callback-output');
         if (cbContainer) {
           if (cbResult.stdout.trim()) {

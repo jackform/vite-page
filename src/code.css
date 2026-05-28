@@ -667,6 +667,134 @@ body {
   color: var(--code-muted);
 }
 
+/* ---- Widget Root Window ---- */
+
+.widget-root {
+  background: var(--code-bg-secondary);
+  border: 2px solid var(--code-border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.widget-titlebar {
+  background: var(--code-accent);
+  color: #fff;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.widget-root-content {
+  padding: 12px;
+}
+
+/* ---- Toplevel (Popup) ---- */
+
+.widget-toplevel-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.widget-toplevel {
+  background: var(--code-bg-secondary);
+  border: 2px solid var(--code-border);
+  border-radius: 8px;
+  overflow: hidden;
+  min-width: 300px;
+  max-width: 90vw;
+  max-height: 80vh;
+}
+
+.widget-toplevel-titlebar {
+  background: var(--code-accent);
+  color: #fff;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.widget-toplevel-close {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.widget-toplevel-content {
+  padding: 12px;
+  overflow-y: auto;
+  max-height: 60vh;
+}
+
+/* ---- Frame Container ---- */
+
+.widget-frame {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 4px;
+}
+
+.widget-frame-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, auto);
+  gap: 4px;
+}
+
+/* ---- LabelFrame (Fieldset) ---- */
+
+.widget-fieldset {
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  padding: 12px;
+  margin: 4px 0;
+  background: var(--code-bg-secondary);
+}
+
+.widget-legend {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--code-text-primary);
+  padding: 0 6px;
+}
+
+/* ---- Textarea (Text widget) ---- */
+
+.widget-text {
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  color: var(--code-text-primary);
+  background: var(--code-bg-secondary);
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  padding: 8px;
+  margin: 0;
+  white-space: pre-wrap;
+  resize: vertical;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.widget-text-disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 /* ---- Utilities ---- */
 
 .hidden { display: none; }
