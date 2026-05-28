@@ -1,0 +1,17 @@
+{
+  "id": "pandas-demo",
+  "title": "Pandas — 資料分析示範",
+  "difficulty": "easy",
+  "category": "Data Science",
+  "tags": ["pandas", "dataframe", "analysis"],
+  "description": "**Pandas** DataFrame 範例 — 建立表格資料、篩選、分組聚合。\n\n此範例需要在 **Pyodide** 引擎下執行（不支援 Skulpt）。",
+  "examples": [],
+  "constraints": [],
+  "starterCode": "import pandas as pd\n\n# 建立 DataFrame\ndf = pd.DataFrame({\n    'name': ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve'],\n    'age': [25, 30, 35, 28, 22],\n    'score': [85, 92, 78, 95, 88],\n    'city': ['Taipei', 'Kaohsiung', 'Taipei', 'Tainan', 'Kaohsiung']\n})\nprint(\"Full DataFrame:\")\nprint(df)\nprint()\n\n# 篩選 score > 80\nprint(\"Score > 80:\")\nprint(df[df['score'] > 80])\nprint()\n\n# 分組聚合\nprint(\"Average score by city:\")\nprint(df.groupby('city')['score'].mean())\n",
+  "testCases": [],
+  "solution": "",
+  "hints": [],
+  "author": "system",
+  "createdAt": "2026-05-01T00:00:00Z",
+  "updatedAt": "2026-05-01T00:00:00Z"
+}

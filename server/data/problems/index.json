@@ -1,0 +1,111 @@
+{
+  "version": "1.0",
+  "updatedAt": "2026-05-28T07:58:35.696Z",
+  "problems": {
+    "two-sum": {
+      "file": "two-sum.json",
+      "title": "1. Two Sum",
+      "difficulty": "easy",
+      "category": "Array",
+      "tags": [
+        "array",
+        "hash-table"
+      ],
+      "author": "system",
+      "createdAt": "2026-05-01T00:00:00Z",
+      "updatedAt": "2026-05-01T00:00:00Z"
+    },
+    "fizzbuzz": {
+      "file": "fizzbuzz.json",
+      "title": "412. Fizz Buzz",
+      "difficulty": "easy",
+      "category": "Loop",
+      "tags": [
+        "math",
+        "string",
+        "simulation"
+      ],
+      "author": "system",
+      "createdAt": "2026-05-01T00:00:00Z",
+      "updatedAt": "2026-05-01T00:00:00Z"
+    },
+    "numpy-demo": {
+      "file": "numpy-demo.json",
+      "title": "NumPy - 陣列運算示範",
+      "difficulty": "easy",
+      "category": "Data Science",
+      "tags": [
+        "numpy",
+        "array",
+        "matrix"
+      ],
+      "author": "system",
+      "createdAt": "2026-05-01T00:00:00Z",
+      "updatedAt": "2026-05-01T00:00:00Z"
+    },
+    "pandas-demo": {
+      "file": "pandas-demo.json",
+      "title": "Pandas — 資料分析示範",
+      "difficulty": "easy",
+      "category": "Data Science",
+      "tags": [
+        "pandas",
+        "dataframe",
+        "analysis"
+      ],
+      "author": "system",
+      "createdAt": "2026-05-01T00:00:00Z",
+      "updatedAt": "2026-05-01T00:00:00Z"
+    },
+    "sklearn-demo": {
+      "file": "sklearn-demo.json",
+      "title": "Scikit-learn — 分類器示範",
+      "difficulty": "medium",
+      "category": "Machine Learning",
+      "tags": [
+        "sklearn",
+        "classification",
+        "random-forest"
+      ],
+      "author": "system",
+      "createdAt": "2026-05-01T00:00:00Z",
+      "updatedAt": "2026-05-01T00:00:00Z"
+    },
+    "scipy-demo": {
+      "file": "scipy-demo.json",
+      "title": "SciPy — 統計與最佳化示範",
+      "difficulty": "medium",
+      "category": "Data Science",
+      "tags": [
+        "scipy",
+        "statistics",
+        "optimization"
+      ],
+      "author": "system",
+      "createdAt": "2026-05-01T00:00:00Z",
+      "updatedAt": "2026-05-01T00:00:00Z"
+    },
+    "test-problem-mpp6abin": {
+      "file": "test-problem-mpp6abin.json",
+      "title": "Test Problem",
+      "difficulty": "medium",
+      "category": "Basic",
+      "tags": [],
+      "author": "teacher",
+      "createdAt": "2026-05-28T07:29:42.106Z",
+      "updatedAt": "2026-05-28T07:29:42.106Z"
+    },
+    "五角星-mpp7aeao": {
+      "file": "五角星-mpp7aeao.json",
+      "title": "五角星",
+      "difficulty": "easy",
+      "category": "Turtle",
+      "tags": [
+        "image"
+      ],
+      "author": "teacher",
+      "createdAt": "2026-05-28T07:57:45.321Z",
+      "updatedAt": "2026-05-28T07:58:35.696Z"
+    }
+  }
+}

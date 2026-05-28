@@ -1,0 +1,17 @@
+{
+  "id": "sklearn-demo",
+  "title": "Scikit-learn — 分類器示範",
+  "difficulty": "medium",
+  "category": "Machine Learning",
+  "tags": ["sklearn", "classification", "random-forest"],
+  "description": "**Scikit-learn** 機器學習範例 — 使用 Iris 資料集訓練 Random Forest 分類器。\n\n此範例需要在 **Pyodide** 引擎下執行（不支援 Skulpt）。",
+  "examples": [],
+  "constraints": [],
+  "starterCode": "from sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.ensemble import RandomForestClassifier\n\n# 載入 Iris 資料集\niris = load_iris()\nX, y = iris.data, iris.target\n\n# 分割訓練/測試集\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=42\n)\nprint(f\"Train size: {len(X_train)}, Test size: {len(X_test)}\")\n\n# 訓練 Random Forest\nclf = RandomForestClassifier(n_estimators=100, random_state=42)\nclf.fit(X_train, y_train)\n\n# 評估\naccuracy = clf.score(X_test, y_test)\nprint(f\"Accuracy: {accuracy:.4f}\")\n\n# 預測\nsample = X_test[:3]\npred = clf.predict(sample)\nprint(f\"\\nPredictions for first 3 test samples: {pred}\")\nprint(f\"Actual labels:                     {y_test[:3]}\")\nprint(f\"Class names: {iris.target_names[pred]}\")\n",
+  "testCases": [],
+  "solution": "",
+  "hints": [],
+  "author": "system",
+  "createdAt": "2026-05-01T00:00:00Z",
+  "updatedAt": "2026-05-01T00:00:00Z"
+}

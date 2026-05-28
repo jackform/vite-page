@@ -1,0 +1,20 @@
+{
+  "id": "五角星-mpp7aeao",
+  "file": "",
+  "title": "五角星",
+  "difficulty": "easy",
+  "category": "Turtle",
+  "tags": [
+    "image"
+  ],
+  "description": "用Turtle画一个五角星\n（必须用turtle引擎）",
+  "examples": [],
+  "constraints": [],
+  "starterCode": "import turtle\n\nturtle.speed(3)\nturtle.color(\"red\")\nturtle.begin_fill()\nfor i in range(5):\n    turtle.forward(200)\n    turtle.right(144)\nturtle.end_fill()",
+  "testCases": [],
+  "solution": "import turtle\n\nturtle.speed(3)\nturtle.color(\"red\")\nturtle.begin_fill()\nfor i in range(5):\n    turtle.forward(300)\n    turtle.right(144)\nturtle.end_fill()",
+  "hints": [],
+  "author": "teacher",
+  "createdAt": "2026-05-28T07:57:45.321Z",
+  "updatedAt": "2026-05-28T07:58:35.696Z"
+}

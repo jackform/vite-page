@@ -56,6 +56,19 @@ export interface ServerToClientEvents {
     timestamp: number;
   }) => void;
   'execution:broadcast': (data: RemoteExecutionResult) => void;
+  'problem:assigned': (data: { problem: AssignedProblem }) => void;
+}
+
+/** A problem as sent to the student (without teacher-only fields). */
+export interface AssignedProblem {
+  id: string;
+  title: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  description: string;
+  examples: { input: string; output: string; explanation?: string }[];
+  constraints: string[];
+  starterCode: string;
+  testCases: { input: string; expected: string }[];
 }
 
 /** Events the client may emit to the server. */
@@ -75,4 +88,6 @@ export interface ClientToServerEvents {
   'teacher:auth': (data: AuthRequest) => void;
   'room:subscribe': (data: { roomId: string }) => void;
   'room:unsubscribe': (data: { roomId: string }) => void;
+  'problem:push': (data: { roomId: string; problem: AssignedProblem }) => void;
+  'problem:push-all': (data: { problem: AssignedProblem }) => void;
 }

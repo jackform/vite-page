@@ -1,0 +1,17 @@
+{
+  "id": "scipy-demo",
+  "title": "SciPy — 統計與最佳化示範",
+  "difficulty": "medium",
+  "category": "Data Science",
+  "tags": ["scipy", "statistics", "optimization"],
+  "description": "**SciPy** 科學計算範例 — 使用 `scipy.stats` 進行統計描述，`scipy.optimize` 求函數最小值。\n\n此範例需要在 **Pyodide** 引擎下執行（不支援 Skulpt）。",
+  "examples": [],
+  "constraints": [],
+  "starterCode": "import numpy as np\nfrom scipy import stats, optimize\n\n# 1. 統計描述\ndata = np.random.default_rng(42).normal(100, 15, 1000)\ndesc = stats.describe(data)\nprint(\"Statistical Description:\")\nprint(f\"  N = {desc.nobs}\")\nprint(f\"  Min/Max = {desc.minmax}\")\nprint(f\"  Mean = {desc.mean:.2f}\")\nprint(f\"  Variance = {desc.variance:.2f}\")\nprint(f\"  Skewness = {desc.skewness:.2f}\")\nprint(f\"  Kurtosis = {desc.kurtosis:.2f}\")\n\n# 2. 單樣本 t 檢定 (H₀: mean = 100)\nt_stat, p_value = stats.ttest_1samp(data, 100)\nprint(f\"\\nT-test (H₀: mean=100): t={t_stat:.4f}, p={p_value:.4f}\")\n\n# 3. 函數最小值求解\ndef f(x):\n    return x**2 + 10*np.sin(x)\n\nresult = optimize.minimize(f, x0=0, method='BFGS')\nprint(f\"\\nMinimize f(x) = x² + 10sin(x):\")\nprint(f\"  x_min = {result.x[0]:.4f}\")\nprint(f\"  f(x_min) = {result.fun:.4f}\")\n",
+  "testCases": [],
+  "solution": "",
+  "hints": [],
+  "author": "system",
+  "createdAt": "2026-05-01T00:00:00Z",
+  "updatedAt": "2026-05-01T00:00:00Z"
+}

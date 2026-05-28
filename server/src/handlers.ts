@@ -2,6 +2,7 @@ import type { Server, Socket } from 'socket.io';
 import type {
   StudentIdentity,
   AuthRequest,
+  AssignedProblem,
   ClientToServerEvents,
   ServerToClientEvents,
 } from '../../shared/types.js';
@@ -119,11 +120,37 @@ export function registerHandlers(
     if (student?.lastExecution) {
       socket.emit('execution:broadcast', student.lastExecution);
     }
+    if (student?.assignedProblem) {
+      socket.emit('problem:assigned', { problem: student.assignedProblem });
+    }
   });
 
   socket.on('room:unsubscribe', (data: { roomId: string }) => {
     socket.leave(data.roomId);
     teacherWatching.delete(socket.id);
+  });
+
+  socket.on('problem:push', (data: { roomId: string; problem: AssignedProblem }) => {
+    if (!socket.data.isTeacher) return;
+
+    const student = roomManager.getStudentByRoomId(data.roomId);
+    if (!student) return;
+
+    roomManager.assignProblem(student.socketId, data.problem);
+    io.to(data.roomId).emit('problem:assigned', { problem: data.problem });
+  });
+
+  socket.on('problem:push-all', (data: { problem: AssignedProblem }) => {
+    if (!socket.data.isTeacher) return;
+
+    const roster = roomManager.getRoster();
+    for (const entry of roster) {
+      const student = roomManager.getStudentByRoomId(entry.roomId);
+      if (student) {
+        roomManager.assignProblem(student.socketId, data.problem);
+        io.to(entry.roomId).emit('problem:assigned', { problem: data.problem });
+      }
+    }
   });
 
   // ---- Disconnect ----

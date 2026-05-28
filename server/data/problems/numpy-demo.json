@@ -1,0 +1,17 @@
+{
+  "id": "numpy-demo",
+  "title": "NumPy - 陣列運算示範",
+  "difficulty": "easy",
+  "category": "Data Science",
+  "tags": ["numpy", "array", "matrix"],
+  "description": "**NumPy** 陣列運算示範 — 使用 `np.array` 建立多維陣列，進行矩陣乘法、元素運算。\n\n此範例需要在 **Pyodide** 引擎下執行（不支援 Skulpt）。",
+  "examples": [],
+  "constraints": [],
+  "starterCode": "import numpy as np\n\n# 建立矩陣\na = np.array([[1, 2, 3], [4, 5, 6]])\nprint(\"Matrix A (2x3):\")\nprint(a)\n\nb = np.array([[7, 8], [9, 10], [11, 12]])\nprint(\"\\nMatrix B (3x2):\")\nprint(b)\n\n# 矩陣乘法\nc = np.dot(a, b)\nprint(\"\\nA @ B (2x2):\")\nprint(c)\n\n# 建立隨機陣列\nrng = np.random.default_rng(42)\nd = rng.random((3, 3))\nprint(\"\\nRandom 3x3:\")\nprint(d)\n\n# 基本統計\nprint(\"\\nMean:\", d.mean())\nprint(\"Std:\", d.std())\n",
+  "testCases": [],
+  "solution": "",
+  "hints": [],
+  "author": "system",
+  "createdAt": "2026-05-01T00:00:00Z",
+  "updatedAt": "2026-05-01T00:00:00Z"
+}

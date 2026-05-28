@@ -10,6 +10,7 @@
  */
 
 import './code.css';
+import { marked } from 'marked';
 import Sk from 'skulpt';
 import { CodeEditor } from './code-editor';
 import { CodeExecutor } from './code-executor';
@@ -20,6 +21,7 @@ import { CodeSocket } from './code-socket';
 import { problems, defaultProblem } from './code-problems';
 import { renderOutput, renderOutputLoading, escapeHtml } from './code-output';
 import type { CodeProblem, ExecutionStatus } from './code-types';
+import type { AssignedProblem } from '../shared/types';
 
 const THEME_KEY = 'python-lab-theme';
 const ENGINE_KEY = 'python-lab-engine';
@@ -136,13 +138,21 @@ function renderRegistrationForm(): string {
   `;
 }
 
-function renderProblem(problem: CodeProblem): string {
+function renderDescription(description: string): string {
+  try {
+    const html = marked.parse(description) as string;
+    if (html && html.trim()) return html;
+  } catch { /* fall through */ }
+  return description; // fallback to raw content
+}
+
+function renderProblem(problem: CodeProblem | AssignedProblem): string {
   return `
     <div class="problem-header">
       <h1 class="problem-title">${escapeHtml(problem.title)}</h1>
       <span class="problem-difficulty difficulty-${problem.difficulty}">${problem.difficulty}</span>
     </div>
-    <div class="problem-description">${problem.description}</div>
+    <div class="problem-description">${renderDescription(problem.description)}</div>
     ${problem.examples.length ? renderExamples(problem.examples) : ''}
     ${problem.constraints.length ? renderConstraints(problem.constraints) : ''}
   `;
@@ -271,6 +281,29 @@ async function initLab(sessionInfo: {
 
   socket.onDisconnect(() => updateConnStatus());
   socket.onConnect(() => updateConnStatus());
+
+  // Listen for teacher-pushed problems
+  socket.on('problem:assigned', (data: { problem: AssignedProblem }) => {
+    const problem = data.problem;
+    currentProblem = {
+      id: problem.id,
+      title: problem.title,
+      difficulty: problem.difficulty,
+      description: problem.description,
+      examples: problem.examples || [],
+      constraints: problem.constraints || [],
+      starterCode: problem.starterCode,
+      testCases: problem.testCases || [],
+    };
+
+    problemPanel.innerHTML = renderProblem(currentProblem);
+    editor.setCode(problem.starterCode);
+    session.updateCode(problem.starterCode);
+    outputPanel.innerHTML = '<div class="output-placeholder">教師已指派新題目。Press Run to execute.</div>';
+
+    // Flash a notification
+    showNotification(`教師已指派新題目：${problem.title}`);
+  });
 
   // Theme toggle
   updateThemeButton();
@@ -428,6 +461,23 @@ async function initLab(sessionInfo: {
       handleRun();
     }
   });
+}
+
+function showNotification(message: string): void {
+  const existing = document.querySelector('.lab-notification');
+  if (existing) existing.remove();
+
+  const el = document.createElement('div');
+  el.className = 'lab-notification';
+  el.textContent = message;
+  document.body.appendChild(el);
+
+  requestAnimationFrame(() => el.classList.add('show'));
+
+  setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 300);
+  }, 3000);
 }
 
 function updateStatusUI(

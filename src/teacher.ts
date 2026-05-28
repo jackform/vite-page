@@ -1,14 +1,19 @@
 /**
- * Teacher Dashboard — Monitor student coding activity in real-time.
+ * Teacher Dashboard — Monitor student coding activity in real-time
+ * and manage coding problems.
  */
 
 import './teacher.css';
+import './problem-manager.css';
 import { io, Socket } from 'socket.io-client';
 import { CodeEditor } from './code-editor';
 import { renderOutput, escapeHtml } from './code-output';
+import { ProblemManager } from './problem-manager';
+import type { Problem, ProblemMeta } from './problem-manager';
 import type {
   RosterEntry,
   RemoteExecutionResult,
+  AssignedProblem,
   ServerToClientEvents,
   ClientToServerEvents,
 } from '../shared/types';
@@ -22,6 +27,8 @@ let selectedRoomId: string | null = null;
 let codeEditor: CodeEditor | null = null;
 let rosterEntries: RosterEntry[] = [];
 let password = '';
+let currentTab: 'monitor' | 'problems' = 'monitor';
+let problemManager: ProblemManager | null = null;
 
 /* ---- Theme ---- */
 
@@ -150,25 +157,41 @@ function renderDashboard(): string {
       </div>
       <button class="btn btn-logout" id="btn-logout">登出</button>
     </nav>
-    <div class="teacher-layout">
-      <aside class="roster-panel" id="roster-panel">
-        <h2 class="roster-title">
-          學生列表
-          <span class="student-count" id="student-count">0</span>
-        </h2>
-        <div class="roster-list" id="roster-list">
-          <div class="roster-empty">等待學生加入...</div>
-        </div>
-      </aside>
-      <div class="monitor-panel">
-        <div class="monitor-student-info" id="monitor-student-info">
-          <span class="monitor-placeholder">請選擇一名學生查看代碼</span>
-        </div>
-        <div class="monitor-editor" id="monitor-editor"></div>
-        <div class="monitor-output" id="monitor-output">
-          <div class="output-placeholder">選擇學生後，此處將顯示執行結果</div>
+    <div class="teacher-tabs">
+      <button class="tab-btn active" data-tab="monitor">學生監控</button>
+      <button class="tab-btn" data-tab="problems">題目管理</button>
+    </div>
+    <div class="teacher-tab-content" id="tab-monitor">
+      <div class="teacher-layout">
+        <aside class="roster-panel" id="roster-panel">
+          <h2 class="roster-title">
+            學生列表
+            <span class="student-count" id="student-count">0</span>
+          </h2>
+          <div class="roster-list" id="roster-list">
+            <div class="roster-empty">等待學生加入...</div>
+          </div>
+        </aside>
+        <div class="monitor-panel">
+          <div class="monitor-student-info" id="monitor-student-info">
+            <span class="monitor-placeholder">請選擇一名學生查看代碼</span>
+          </div>
+          <div class="monitor-push-bar" id="monitor-push-bar" style="display:none">
+            <select id="push-problem-select" class="push-select">
+              <option value="">選擇要推送的題目...</option>
+            </select>
+            <button class="btn btn-push" id="btn-push-to-student">推送給此學生</button>
+            <button class="btn btn-push-all" id="btn-push-to-all">推送給所有學生</button>
+          </div>
+          <div class="monitor-editor" id="monitor-editor"></div>
+          <div class="monitor-output" id="monitor-output">
+            <div class="output-placeholder">選擇學生後，此處將顯示執行結果</div>
+          </div>
         </div>
       </div>
+    </div>
+    <div class="teacher-tab-content hidden" id="tab-problems">
+      <div id="problem-manager-container"></div>
     </div>
   `;
 }
@@ -185,6 +208,7 @@ function initDashboard(): void {
   const connText = document.getElementById('conn-text')!;
   const btnLogout = document.getElementById('btn-logout')!;
 
+  // Connection status
   function updateConnStatus(): void {
     if (socket?.connected) {
       connDot.className = 'status-dot status-ready';
@@ -200,6 +224,11 @@ function initDashboard(): void {
   // Theme toggle
   updateThemeButton();
   document.getElementById('btn-theme-toggle')!.addEventListener('click', toggleTheme);
+
+  // Tab switching
+  initTabs();
+
+  /* ---- Monitor Tab ---- */
 
   function renderRoster(): void {
     studentCount.textContent = String(rosterEntries.length);
@@ -224,7 +253,6 @@ function initDashboard(): void {
       )
       .join('');
 
-    // Click handlers
     rosterList.querySelectorAll('.roster-item').forEach((item) => {
       item.addEventListener('click', () => {
         const roomId = (item as HTMLElement).dataset.roomId!;
@@ -233,8 +261,17 @@ function initDashboard(): void {
     });
   }
 
+  function refreshPushDropdown(): void {
+    const select = document.getElementById('push-problem-select') as HTMLSelectElement;
+    if (!select) return;
+    const problems = problemManager?.getProblems() || [];
+    select.innerHTML = `
+      <option value="">選擇要推送的題目...</option>
+      ${problems.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.title)}</option>`).join('')}
+    `;
+  }
+
   function selectStudent(roomId: string): void {
-    // Unsubscribe previous
     if (selectedRoomId) {
       socket?.emit('room:unsubscribe', { roomId: selectedRoomId });
     }
@@ -250,7 +287,11 @@ function initDashboard(): void {
       `;
     }
 
-    // Reset editor
+    // Show push bar
+    const pushBar = document.getElementById('monitor-push-bar')!;
+    pushBar.style.display = 'flex';
+    refreshPushDropdown();
+
     if (codeEditor) {
       codeEditor.destroy();
       codeEditor = null;
@@ -261,13 +302,66 @@ function initDashboard(): void {
     renderRoster();
   }
 
+  // Push button
+  document.getElementById('btn-push-to-student')?.addEventListener('click', async () => {
+    if (!selectedRoomId || !problemManager) return;
+    const select = document.getElementById('push-problem-select') as HTMLSelectElement;
+    const problemId = select.value;
+    if (!problemId) return;
+
+    const problem = await problemManager.getProblem(problemId);
+    if (!problem) return;
+
+    const assigned: AssignedProblem = {
+      id: problem.id,
+      title: problem.title,
+      difficulty: problem.difficulty,
+      description: problem.description,
+      examples: problem.examples,
+      constraints: problem.constraints,
+      starterCode: problem.starterCode,
+      testCases: problem.testCases,
+    };
+
+    socket?.emit('problem:push', { roomId: selectedRoomId, problem: assigned });
+    select.value = '';
+    alert(`已推送「${problem.title}」給學生`);
+  });
+
+  document.getElementById('btn-push-to-all')?.addEventListener('click', async () => {
+    if (!problemManager) return;
+    const select = document.getElementById('push-problem-select') as HTMLSelectElement;
+    const problemId = select.value;
+    if (!problemId) return;
+
+    if (!confirm('確定要推送給所有學生嗎？')) return;
+
+    const problem = await problemManager.getProblem(problemId);
+    if (!problem) return;
+
+    const assigned: AssignedProblem = {
+      id: problem.id,
+      title: problem.title,
+      difficulty: problem.difficulty,
+      description: problem.description,
+      examples: problem.examples,
+      constraints: problem.constraints,
+      starterCode: problem.starterCode,
+      testCases: problem.testCases,
+    };
+
+    socket?.emit('problem:push-all', { problem: assigned });
+    select.value = '';
+    alert(`已推送「${problem.title}」給所有學生`);
+  });
+
   // Roster events
   socket?.on('roster:update', (data) => {
     rosterEntries = data.students;
     renderRoster();
   });
 
-  // Code broadcast from server
+  // Code broadcast
   socket?.on('code:broadcast', (data) => {
     if (data.roomId !== selectedRoomId) return;
 
@@ -297,6 +391,8 @@ function initDashboard(): void {
 
   // Logout
   btnLogout.addEventListener('click', () => {
+    problemManager?.destroy();
+    problemManager = null;
     socket?.disconnect();
     socket = null;
     selectedRoomId = null;
@@ -312,6 +408,61 @@ function initDashboard(): void {
     if (selectedRoomId) {
       socket?.emit('room:subscribe', { roomId: selectedRoomId });
     }
+  });
+}
+
+/* ---- Tabs ---- */
+
+function initTabs(): void {
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const tabMonitor = document.getElementById('tab-monitor')!;
+  const tabProblems = document.getElementById('tab-problems')!;
+
+  tabBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tab = (btn as HTMLElement).dataset.tab as 'monitor' | 'problems';
+      if (tab === currentTab) return;
+
+      tabBtns.forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentTab = tab;
+
+      if (tab === 'monitor') {
+        tabMonitor.classList.remove('hidden');
+        tabProblems.classList.add('hidden');
+      } else {
+        tabMonitor.classList.add('hidden');
+        tabProblems.classList.remove('hidden');
+        initProblemsTab();
+      }
+    });
+  });
+}
+
+function initProblemsTab(): void {
+  if (problemManager) return; // Already initialized
+
+  const container = document.getElementById('problem-manager-container')!;
+  problemManager = new ProblemManager(container);
+
+  problemManager.onProblemSelect = (problem: Problem) => {
+    // Could pre-fill push dropdown, but for now this is informational
+  };
+
+  problemManager.onProblemsChange = () => {
+    // Refresh push dropdown in monitor tab
+    const select = document.getElementById('push-problem-select') as HTMLSelectElement;
+    if (select && select.style.display !== 'none') {
+      const problems = problemManager?.getProblems() || [];
+      select.innerHTML = `
+        <option value="">選擇要推送的題目...</option>
+        ${problems.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.title)}</option>`).join('')}
+      `;
+    }
+  };
+
+  problemManager.init().catch((err) => {
+    console.error('Failed to init ProblemManager:', err);
   });
 }
 

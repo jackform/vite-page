@@ -859,3 +859,26 @@ body {
     margin-top: 2px;
   }
 }
+
+/* Notification toast */
+.lab-notification {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-100px);
+  background: var(--accent);
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  z-index: 9999;
+  opacity: 0;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.lab-notification.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}

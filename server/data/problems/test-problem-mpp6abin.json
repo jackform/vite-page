@@ -1,0 +1,18 @@
+{
+  "id": "test-problem-mpp6abin",
+  "file": "",
+  "title": "Test Problem",
+  "difficulty": "medium",
+  "category": "Basic",
+  "tags": [],
+  "description": "This is a test problem. Write a function `hello()` that returns \"Hello, World!\"",
+  "examples": [],
+  "constraints": [],
+  "starterCode": "def hello():\n    return \"Hello, World!\"",
+  "testCases": [],
+  "solution": "",
+  "hints": [],
+  "author": "teacher",
+  "createdAt": "2026-05-28T07:29:42.106Z",
+  "updatedAt": "2026-05-28T07:29:42.106Z"
+}

@@ -1,4 +1,4 @@
-import type { RosterEntry, RemoteExecutionResult } from '../../shared/types.js';
+import type { RosterEntry, RemoteExecutionResult, AssignedProblem } from '../../shared/types.js';
 
 interface CodeSnapshot {
   code: string;
@@ -13,6 +13,7 @@ interface StudentRecord {
   joinedAt: number;
   currentCode: CodeSnapshot | null;
   lastExecution: RemoteExecutionResult | null;
+  assignedProblem: AssignedProblem | null;
 }
 
 export class RoomManager {
@@ -28,6 +29,7 @@ export class RoomManager {
       joinedAt: Date.now(),
       currentCode: null,
       lastExecution: null,
+      assignedProblem: null,
     };
     this.studentsBySocket.set(socketId, record);
     return record;
@@ -64,6 +66,17 @@ export class RoomManager {
     if (record) {
       record.lastExecution = result;
     }
+  }
+
+  assignProblem(socketId: string, problem: AssignedProblem): void {
+    const record = this.studentsBySocket.get(socketId);
+    if (record) {
+      record.assignedProblem = problem;
+    }
+  }
+
+  getAssignedProblem(socketId: string): AssignedProblem | null {
+    return this.studentsBySocket.get(socketId)?.assignedProblem ?? null;
   }
 
   getRoster(): RosterEntry[] {
