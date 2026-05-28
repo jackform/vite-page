@@ -637,20 +637,19 @@ export class CodeWidgetExecutor {
     const type = layout?.type || 'pack';
 
     if (type === 'grid') {
-      wrapper.style.display = 'inline-grid';
+      wrapper.style.display = 'grid';
       if (layout?.row !== undefined) wrapper.style.gridRow = String(layout.row + 1);
       if (layout?.column !== undefined) wrapper.style.gridColumn = String(layout.column + 1);
       wrapper.style.padding = `${layout?.pady || 2}px ${layout?.padx || 4}px`;
     } else {
-      wrapper.style.display = 'inline-block';
+      // Default to block (vertical stacking), like tkinter pack(side='top')
+      wrapper.style.display = 'block';
       wrapper.style.padding = `${layout?.pady || 2}px ${layout?.padx || 4}px`;
 
       const fill = layout?.fill;
       if (fill === 'x') {
-        wrapper.style.display = 'block';
         el.style.width = '100%';
       } else if (fill === 'both') {
-        wrapper.style.display = 'block';
         el.style.width = '100%';
         el.style.height = '100%';
       }

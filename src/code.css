@@ -769,6 +769,7 @@ body {
 
 .widget-frame {
   display: flex;
+  flex-direction: column;
   flex-wrap: wrap;
   gap: 2px;
   padding: 4px;
