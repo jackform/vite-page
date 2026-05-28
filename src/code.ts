@@ -18,7 +18,7 @@ import { CodeWidgetExecutor } from './code-widget-executor';
 import { SkulptExecutor } from './code-skulpt-executor';
 import { CodeSession } from './code-session';
 import { CodeSocket } from './code-socket';
-import { problems, defaultProblem } from './code-problems';
+import { problems as fallbackProblems, defaultProblem as fallbackDefault } from './code-problems';
 import { renderOutput, renderOutputLoading, escapeHtml } from './code-output';
 import type { CodeProblem, ExecutionStatus } from './code-types';
 import type { AssignedProblem } from '../shared/types';
@@ -33,7 +33,11 @@ let editor: CodeEditor;
 let executor: CodeExecutor | SkulptExecutor | CodeWidgetExecutor;
 let session: CodeSession;
 let socket: CodeSocket;
-let currentProblem: CodeProblem = defaultProblem;
+/** All available problems loaded from server (or fallback). */
+let problemsById: Record<string, CodeProblem> = {};
+/** Ordered list of problem ids for cycling. */
+let problemIds: string[] = [];
+let currentProblem: CodeProblem = fallbackDefault;
 let isApplyingRemote = false;
 let currentEngine: EngineType = 'pyodide';
 
@@ -92,7 +96,9 @@ function renderLayout(): string {
         <div class="action-bar">
           <button class="btn btn-run" id="btn-run" disabled>▶ Run</button>
           <button class="btn btn-tests" id="btn-tests" disabled>✓ Run Tests</button>
-          <button class="btn btn-problem" id="btn-problem">切換題目</button>
+          <select class="problem-select" id="problem-select" title="選擇題目">
+            <option value="">載入中...</option>
+          </select>
           <select class="engine-select" id="engine-select" title="Python 引擎">
             <option value="pyodide">Pyodide</option>
             <option value="skulpt">Skulpt</option>
@@ -231,6 +237,94 @@ function initRegistration(): void {
   });
 }
 
+/* ---- Problem Loading ---- */
+
+async function loadProblemsFromServer(): Promise<void> {
+  try {
+    const res = await fetch('/api/problems');
+    if (!res.ok) throw new Error('Failed to fetch');
+    const list: { id: string; title: string; difficulty: 'easy' | 'medium' | 'hard' }[] = await res.json();
+
+    problemIds = [];
+    problemsById = {};
+
+    // Load first problem immediately, rest on demand
+    for (const meta of list) {
+      problemIds.push(meta.id);
+      // Store metadata immediately for the dropdown label
+      if (!problemsById[meta.id]) {
+        problemsById[meta.id] = {
+          id: meta.id,
+          title: meta.title,
+          difficulty: meta.difficulty,
+          description: '',
+          examples: [],
+          constraints: [],
+          starterCode: '',
+          testCases: [],
+        };
+      }
+    }
+
+    if (problemIds.length > 0) {
+      const first = await loadProblemById(problemIds[0]);
+      if (first) currentProblem = first;
+    }
+  } catch {
+    // Fall back to hardcoded problems
+    problemsById = fallbackProblems;
+    problemIds = Object.keys(fallbackProblems);
+    currentProblem = fallbackDefault;
+  }
+}
+
+async function loadProblemById(id: string): Promise<CodeProblem | null> {
+  const cached = problemsById[id];
+  // Only return cached if it has actual content (not just metadata stub)
+  if (cached && cached.starterCode) return cached;
+  try {
+    const res = await fetch(`/api/problems/${id}`);
+    if (!res.ok) return null;
+    const full: CodeProblem = await res.json();
+    problemsById[full.id] = full;
+    return full;
+  } catch {
+    return cached || null;
+  }
+}
+
+function populateProblemSelect(): void {
+  const select = document.getElementById('problem-select') as HTMLSelectElement;
+  if (!select) return;
+
+  const currentId = currentProblem?.id;
+  select.innerHTML = problemIds
+    .map((id) => {
+      const p = problemsById[id];
+      const title = p?.title || id;
+      const selected = id === currentId ? ' selected' : '';
+      return `<option value="${id}"${selected}>${escapeHtml(title)}</option>`;
+    })
+    .join('');
+
+  if (problemIds.length === 0) {
+    select.innerHTML = '<option value="">尚無題目</option>';
+  }
+}
+
+function switchToProblem(problem: CodeProblem): void {
+  const problemPanel = document.getElementById('problem-panel');
+  const outputPanel = document.getElementById('output-panel');
+  if (!problemPanel || !outputPanel) return;
+
+  currentProblem = problem;
+  problemPanel.innerHTML = renderProblem(problem);
+  editor.setCode(problem.starterCode);
+  session.updateCode(problem.starterCode);
+  outputPanel.innerHTML = '<div class="output-placeholder">Ready. Press Run to execute.</div>';
+  populateProblemSelect();
+}
+
 /* ---- Init ---- */
 
 async function initLab(sessionInfo: {
@@ -246,12 +340,14 @@ async function initLab(sessionInfo: {
   const outputPanel = document.getElementById('output-panel')!;
   const btnRun = document.getElementById('btn-run')! as HTMLButtonElement;
   const btnTests = document.getElementById('btn-tests')! as HTMLButtonElement;
-  const btnProblem = document.getElementById('btn-problem')! as HTMLButtonElement;
+  const problemSelect = document.getElementById('problem-select')! as HTMLSelectElement;
   const statusText = document.getElementById('status-text')!;
   const statusDot = document.querySelector('.status-dot')!;
   const connDot = document.getElementById('conn-dot')!;
   const connText = document.getElementById('conn-text')!;
 
+  // Load problems from server
+  await loadProblemsFromServer();
   problemPanel.innerHTML = renderProblem(currentProblem);
 
   session = new CodeSession(
@@ -291,7 +387,7 @@ async function initLab(sessionInfo: {
   // Listen for teacher-pushed problems
   socket.on('problem:assigned', (data: { problem: AssignedProblem }) => {
     const problem = data.problem;
-    currentProblem = {
+    const codeProblem: CodeProblem = {
       id: problem.id,
       title: problem.title,
       difficulty: problem.difficulty,
@@ -302,12 +398,14 @@ async function initLab(sessionInfo: {
       testCases: problem.testCases || [],
     };
 
-    problemPanel.innerHTML = renderProblem(currentProblem);
-    editor.setCode(problem.starterCode);
-    session.updateCode(problem.starterCode);
-    outputPanel.innerHTML = '<div class="output-placeholder">教師已指派新題目。Press Run to execute.</div>';
+    // Also add to local cache so it appears in the cycle list
+    if (!problemsById[codeProblem.id]) {
+      problemsById[codeProblem.id] = codeProblem;
+      problemIds.push(codeProblem.id);
+    }
 
-    // Flash a notification
+    switchToProblem(codeProblem);
+    outputPanel.innerHTML = '<div class="output-placeholder">教師已指派新題目。Press Run to execute.</div>';
     showNotification(`教師已指派新題目：${problem.title}`);
   });
 
@@ -449,16 +547,46 @@ async function initLab(sessionInfo: {
   btnRun.addEventListener('click', handleRun);
   btnTests.addEventListener('click', handleTests);
 
-  btnProblem.addEventListener('click', () => {
-    const keys = Object.keys(problems);
-    const currentIdx = keys.indexOf(currentProblem.id);
-    const nextIdx = (currentIdx + 1) % keys.length;
-    currentProblem = problems[keys[nextIdx]];
+  // Populate problem dropdown after loading
+  populateProblemSelect();
 
-    problemPanel.innerHTML = renderProblem(currentProblem);
-    editor.setCode(currentProblem.starterCode);
-    session.updateCode(currentProblem.starterCode);
-    outputPanel.innerHTML = '<div class="output-placeholder">Code cleared. Press Run to execute.</div>';
+  // Refresh problem list from server when opening the dropdown
+  problemSelect.addEventListener('focus', async () => {
+    try {
+      const res = await fetch('/api/problems');
+      if (res.ok) {
+        const list: { id: string; title: string; difficulty: string }[] = await res.json();
+        const newIds: string[] = [];
+        for (const meta of list) {
+          newIds.push(meta.id);
+          if (!problemsById[meta.id]) {
+            problemsById[meta.id] = {
+              id: meta.id,
+              title: meta.title,
+              difficulty: meta.difficulty as CodeProblem['difficulty'],
+              description: '',
+              examples: [],
+              constraints: [],
+              starterCode: '',
+              testCases: [],
+            };
+          }
+        }
+        problemIds = newIds;
+        populateProblemSelect();
+      }
+    } catch { /* keep current list */ }
+  });
+
+  // Switch to selected problem
+  problemSelect.addEventListener('change', async () => {
+    const id = problemSelect.value;
+    if (!id || id === currentProblem?.id) return;
+    const problem = await loadProblemById(id);
+    if (problem) {
+      switchToProblem(problem);
+      populateProblemSelect();
+    }
   });
 
   document.addEventListener('keydown', (e) => {

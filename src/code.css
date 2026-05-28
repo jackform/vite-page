@@ -319,16 +319,29 @@ body {
   background: var(--code-tests-hover);
 }
 
-.btn-problem {
+.problem-select {
   background: transparent;
   color: var(--code-text-secondary);
   border: 1px solid var(--code-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
   margin-left: auto;
+  min-width: 160px;
+  max-width: 240px;
+  outline: none;
 }
 
-.btn-problem:hover {
+.problem-select:focus {
+  border-color: var(--code-accent);
   color: var(--code-text-primary);
-  border-color: var(--code-text-muted);
+}
+
+.problem-select option {
+  background: var(--code-bg-secondary);
+  color: var(--code-text-primary);
 }
 
 .executor-status {
