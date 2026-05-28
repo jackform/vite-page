@@ -138,9 +138,15 @@ function renderRegistrationForm(): string {
   `;
 }
 
+// Configure marked globally for GFM line breaks (single \n → <br>)
+marked.setOptions({ breaks: true });
+
 function renderDescription(description: string): string {
+  // Strip leading whitespace from each line (template literal indentation
+  // would otherwise cause marked to interpret the content as a code block).
+  const dedented = description.replace(/^[ \t]+/gm, '');
   try {
-    const html = marked.parse(description) as string;
+    const html = marked.parse(dedented) as string;
     if (html && html.trim()) return html;
   } catch { /* fall through */ }
   return description; // fallback to raw content

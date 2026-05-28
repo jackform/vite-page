@@ -2,6 +2,8 @@ import { marked } from 'marked';
 import { CodeEditor } from './code-editor';
 import { escapeHtml } from './code-output';
 
+marked.setOptions({ breaks: true });
+
 export interface ProblemMeta {
   id: string;
   file: string;
