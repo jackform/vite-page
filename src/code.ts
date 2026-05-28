@@ -13,6 +13,7 @@ import './code.css';
 import Sk from 'skulpt';
 import { CodeEditor } from './code-editor';
 import { CodeExecutor } from './code-executor';
+import { CodeWidgetExecutor } from './code-widget-executor';
 import { SkulptExecutor } from './code-skulpt-executor';
 import { CodeSession } from './code-session';
 import { CodeSocket } from './code-socket';
@@ -23,11 +24,11 @@ import type { CodeProblem, ExecutionStatus } from './code-types';
 const THEME_KEY = 'python-lab-theme';
 const ENGINE_KEY = 'python-lab-engine';
 
-type EngineType = 'pyodide' | 'skulpt';
+type EngineType = 'pyodide' | 'skulpt' | 'pyodide-widget';
 
 let app: HTMLElement;
 let editor: CodeEditor;
-let executor: CodeExecutor | SkulptExecutor;
+let executor: CodeExecutor | SkulptExecutor | CodeWidgetExecutor;
 let session: CodeSession;
 let socket: CodeSocket;
 let currentProblem: CodeProblem = defaultProblem;
@@ -93,6 +94,7 @@ function renderLayout(): string {
           <select class="engine-select" id="engine-select" title="Python 引擎">
             <option value="pyodide">Pyodide</option>
             <option value="skulpt">Skulpt</option>
+            <option value="pyodide-widget">Pyodide + Widgets</option>
           </select>
           <div class="executor-status" id="executor-status">
             <span class="status-dot status-loading"></span>
@@ -279,7 +281,7 @@ async function initLab(sessionInfo: {
   const turtleWrapper = document.getElementById('turtle-canvas-wrapper')!;
 
   const savedEngine = localStorage.getItem(ENGINE_KEY) as EngineType | null;
-  if (savedEngine === 'skulpt' || savedEngine === 'pyodide') {
+  if (savedEngine === 'skulpt' || savedEngine === 'pyodide' || savedEngine === 'pyodide-widget') {
     currentEngine = savedEngine;
     engineSelect.value = savedEngine;
   }
@@ -291,8 +293,6 @@ async function initLab(sessionInfo: {
     if (engine === 'skulpt') {
       turtleWrapper.classList.remove('hidden');
       try {
-        // Sk.TurtleGraphics is created by the turtle module on first import.
-        // Pre-configure it so the module finds the right canvas element.
         if (!(Sk as any).TurtleGraphics) {
           (Sk as any).TurtleGraphics = {};
         }
@@ -301,12 +301,26 @@ async function initLab(sessionInfo: {
       } catch (err: any) {
         console.error('Skulpt init failed:', err);
         outputPanel.innerHTML = `<div class="output-stderr">Failed to start Skulpt: ${escapeHtml(err.message)}</div>`;
-        // Fall back to Pyodide
         engineSelect.value = 'pyodide';
         localStorage.setItem(ENGINE_KEY, 'pyodide');
         currentEngine = 'pyodide';
         executor = new CodeExecutor();
       }
+    } else if (engine === 'pyodide-widget') {
+      executor = new CodeWidgetExecutor();
+      // Wire up callback results from widget button clicks
+      (executor as CodeWidgetExecutor).onCallbackResult((cbResult) => {
+        const cbContainer = document.getElementById('widget-callback-output');
+        if (cbContainer) {
+          if (cbResult.stdout.trim()) {
+            cbContainer.innerHTML += `<div class="output-stdout">${escapeHtml(cbResult.stdout.trim())}</div>`;
+          }
+          if (cbResult.stderr.trim()) {
+            cbContainer.innerHTML += `<div class="output-stderr">${escapeHtml(cbResult.stderr.trim())}</div>`;
+          }
+          cbContainer.scrollTop = cbContainer.scrollHeight;
+        }
+      });
     } else {
       executor = new CodeExecutor();
     }
@@ -340,33 +354,53 @@ async function initLab(sessionInfo: {
     if (!executor.isReady()) return;
     outputPanel.innerHTML = renderOutputLoading();
     const code = editor.getCode();
-    const result = await executor.execute(code);
-    outputPanel.innerHTML = renderOutput(result);
-
-    socket.sendExecutionResult({
-      status: result.status,
-      stdout: result.stdout,
-      stderr: result.stderr,
-      returnValue: result.returnValue,
-      executionTime: result.executionTime,
-    });
+    if (executor instanceof CodeWidgetExecutor) {
+      const result = await executor.execute(code);
+      executor.renderWidgetOutput(outputPanel, result);
+      socket.sendExecutionResult({
+        status: result.status,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        executionTime: result.executionTime,
+      });
+    } else {
+      const result = await executor.execute(code);
+      outputPanel.innerHTML = renderOutput(result);
+      socket.sendExecutionResult({
+        status: result.status,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        returnValue: result.returnValue,
+        executionTime: result.executionTime,
+      });
+    }
   }
 
   async function handleTests(): Promise<void> {
     if (!executor.isReady()) return;
     outputPanel.innerHTML = renderOutputLoading();
     const code = editor.getCode();
-    const result = await executor.runTests(code, currentProblem.testCases);
-    outputPanel.innerHTML = renderOutput(result);
-
-    socket.sendExecutionResult({
-      status: result.status,
-      stdout: result.stdout,
-      stderr: result.stderr,
-      passedCount: result.passedCount,
-      totalCount: result.totalCount,
-      executionTime: result.executionTime,
-    });
+    if (executor instanceof CodeWidgetExecutor) {
+      const result = await executor.execute(code);
+      executor.renderWidgetOutput(outputPanel, result);
+      socket.sendExecutionResult({
+        status: result.status,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        executionTime: result.executionTime,
+      });
+    } else {
+      const result = await executor.runTests(code, currentProblem.testCases);
+      outputPanel.innerHTML = renderOutput(result);
+      socket.sendExecutionResult({
+        status: result.status,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        passedCount: result.passedCount,
+        totalCount: result.totalCount,
+        executionTime: result.executionTime,
+      });
+    }
   }
 
   btnRun.addEventListener('click', handleRun);

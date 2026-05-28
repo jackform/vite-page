@@ -519,6 +519,74 @@ body {
   font-style: italic;
 }
 
+/* ---- Webtkinter Widgets ---- */
+
+.widget-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+  border-top: 1px solid var(--code-border);
+  margin-top: 8px;
+}
+
+.widget-wrapper {
+  display: inline-block;
+}
+
+.widget-button {
+  background: var(--code-accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.widget-button:hover {
+  background: var(--code-accent-hover);
+}
+
+.widget-label {
+  font-size: 13px;
+  color: var(--code-text-primary);
+}
+
+.widget-entry {
+  background: var(--code-bg-primary);
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--code-text-primary);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.widget-entry:focus {
+  outline: none;
+  border-color: var(--code-accent);
+}
+
+.widget-text {
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  color: var(--code-text-primary);
+  background: var(--code-bg-secondary);
+  padding: 8px;
+  border-radius: 6px;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+#widget-callback-output {
+  border-top: 1px solid var(--code-border);
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
 /* ---- Responsive ---- */
 
 /* ---- Registration Overlay ---- */
