@@ -56,6 +56,7 @@ function toggleTheme(): void {
   }
   updateThemeButton();
   codeEditor?.setTheme(isLightTheme());
+  problemManager?.setTheme(isLightTheme());
 }
 
 function updateThemeButton(): void {

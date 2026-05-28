@@ -249,10 +249,11 @@ export class ProblemManager {
 
     // CodeMirror editors
     const starterContainer = document.getElementById('pm-starter-editor')!;
-    this.starterEditor = new CodeEditor(starterContainer, p.starterCode, false, false);
+    const isLight = document.documentElement.dataset.theme === 'light';
+    this.starterEditor = new CodeEditor(starterContainer, p.starterCode, false, isLight);
 
     const solutionContainer = document.getElementById('pm-solution-editor')!;
-    this.solutionEditor = new CodeEditor(solutionContainer, p.solution || '', false, false);
+    this.solutionEditor = new CodeEditor(solutionContainer, p.solution || '', false, isLight);
 
     // Wire events
     this.wireEditorEvents();
@@ -712,6 +713,11 @@ export class ProblemManager {
       }
     });
     input.click();
+  }
+
+  setTheme(isLight: boolean): void {
+    this.starterEditor?.setTheme(isLight);
+    this.solutionEditor?.setTheme(isLight);
   }
 
   destroy(): void {
