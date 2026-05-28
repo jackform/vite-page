@@ -214,6 +214,7 @@ class Toplevel(Widget):
     def __init__(self, parent=None, **kwargs):
         super().__init__('toplevel', parent=parent, **kwargs)
         self._props['title'] = 'Toplevel'
+        _emit_create(self)  # Toplevel doesn't need .pack() — emit create immediately
 
     def title(self, text=None):
         if text is not None:

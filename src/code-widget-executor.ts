@@ -233,38 +233,62 @@ export class CodeWidgetExecutor {
    * Render widgets that arrive during a callback (e.g. Toplevel created by show_rules,
    * configure commands from Text.insert/delete, messagebox commands).
    *
-   * Only Toplevel/messagebox widgets get an overlay. Configure commands are applied
-   * directly to existing elements without blocking the UI.
+   * Toplevels render at document body level as fixed dialogs. Their child widgets
+   * are rendered inside the Toplevel content area. Messagebox commands trigger
+   * window.alert(). Configure commands update existing elements.
    */
   renderCallbackWidgets(widgets: WidgetCommand[]): void {
     if (!widgets.length) return;
 
-    // Split: overlay widgets vs direct widgets
-    const needsOverlay = widgets.filter(
-      w => w.type === 'toplevel' || w.cmd === 'messagebox'
-    );
-    const direct = widgets.filter(
-      w => w.type !== 'toplevel' && w.cmd !== 'messagebox'
-    );
+    // Group: find Toplevel ids first, then assign children to them
+    const toplevelIds = new Set<number>();
+    const toplevelWidgets: WidgetCommand[] = [];
+    const messageboxWidgets: WidgetCommand[] = [];
+    const remaining: WidgetCommand[] = [];
 
-    // Apply direct widgets (configure, etc.) to existing elements
-    for (const w of direct) {
-      this.processWidgetCommand(w, document.getElementById('output-panel')!);
+    for (const w of widgets) {
+      if (w.type === 'toplevel' && w.cmd === 'create') {
+        toplevelIds.add(w.id);
+        toplevelWidgets.push(w);
+      } else if (w.cmd === 'messagebox') {
+        messageboxWidgets.push(w);
+      } else {
+        remaining.push(w);
+      }
     }
 
-    // Render overlay widgets (Toplevel, messagebox)
-    if (needsOverlay.length > 0) {
-      let overlay = document.getElementById('widget-callback-overlay');
-      if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'widget-callback-overlay';
-        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:1000;';
-        document.getElementById('output-panel')?.appendChild(overlay);
+    // Render each Toplevel as a document-level overlay
+    const toplevelContentDivs = new Map<number, HTMLElement>();
+    for (const w of toplevelWidgets) {
+      const overlay = this.createWidgetElement(w, document.body);
+      if (overlay) {
+        this.widgetElements.set(w.id, overlay);
+        document.body.appendChild(overlay);
+        // Find the content div for child appending
+        const content = overlay.querySelector('.widget-toplevel-content') as HTMLElement;
+        if (content) toplevelContentDivs.set(w.id, content);
       }
+    }
 
-      for (const w of needsOverlay) {
-        this.processWidgetCommand(w, overlay);
+    // Process remaining widgets: children of Toplevel go to its content div,
+    // standalone widgets go to output panel.
+    for (const w of remaining) {
+      if (w.cmd === 'create' && w.parentId !== undefined && toplevelContentDivs.has(w.parentId)) {
+        // Child of a Toplevel — render directly into the content div
+        const el = this.createWidgetElement(w, toplevelContentDivs.get(w.parentId)!);
+        if (el) {
+          this.widgetElements.set(w.id, el);
+          toplevelContentDivs.get(w.parentId)!.appendChild(el);
+        }
+      } else {
+        // Standalone configure or other widget
+        this.processWidgetCommand(w, document.getElementById('output-panel')!);
       }
+    }
+
+    // Messagebox widgets
+    for (const w of messageboxWidgets) {
+      this.processWidgetCommand(w, document.body);
     }
   }
 
@@ -301,7 +325,7 @@ export class CodeWidgetExecutor {
 
   private createWorker(): void {
     this.worker = new Worker(
-      `${import.meta.env.BASE_URL}code-widget-worker.js`
+      `${import.meta.env.BASE_URL}code-widget-worker.js?v=${Date.now()}`
     );
 
     // Re-attach callback handler if one was registered before the worker existed
@@ -344,15 +368,20 @@ export class CodeWidgetExecutor {
    * Process a widget command — create, configure, messagebox, or destroy.
    * Returns the created element for 'create', or null for other commands.
    */
-  private processWidgetCommand(w: WidgetCommand, defaultParent: HTMLElement): HTMLElement | null {
+  private processWidgetCommand(w: WidgetCommand, defaultParent: HTMLElement, ignoreParent = false): HTMLElement | null {
     switch (w.cmd) {
       case 'create': {
         const el = this.createWidgetElement(w, defaultParent);
         if (el) {
           this.widgetElements.set(w.id, el);
-          // Resolve parent: use parentId if present, otherwise append to defaultParent
-          if (w.parentId !== undefined && this.widgetElements.has(w.parentId)) {
-            this.widgetElements.get(w.parentId)!.appendChild(el);
+          // Resolve parent: use parentId if present, otherwise append to defaultParent.
+          // ignoreParent=true means always use defaultParent (for Toplevel overlays).
+          if (!ignoreParent && w.parentId !== undefined && this.widgetElements.has(w.parentId)) {
+            const parentEl = this.widgetElements.get(w.parentId)!;
+            // For containers with a dedicated content area (root, toplevel),
+            // append children to the content div, not the outer wrapper.
+            const contentArea = parentEl.querySelector('.widget-root-content, .widget-toplevel-content') as HTMLElement;
+            (contentArea || parentEl).appendChild(el);
           } else {
             defaultParent.appendChild(el);
           }
@@ -423,9 +452,6 @@ export class CodeWidgetExecutor {
         content.className = 'widget-root-content';
         root.appendChild(content);
 
-        // Store the content area as the element for child widget parenting
-        this.widgetElements.set(w.id, content);
-
         // Apply bg / geometry
         if (props['bg']) root.style.backgroundColor = props['bg'];
         const geom = props['geometry'];
@@ -477,8 +503,6 @@ export class CodeWidgetExecutor {
         top.appendChild(content);
         overlay.appendChild(top);
 
-        // Store content as the element for child widget parenting
-        this.widgetElements.set(w.id, content);
         return overlay;
       }
 
