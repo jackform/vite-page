@@ -526,23 +526,21 @@ self.onmessage = async function (e) {
       },
     });
 
-    // Sync current DOM input values into Python so Entry.get() / Text.get()
-    // return what the user actually typed, not the initial _props value.
-    if (msg.inputValues) {
-      const setInputs = 'import webtkinter\n' +
-        'webtkinter._input_values = ' + JSON.stringify(msg.inputValues) + '\n';
-      await pyodide.runPythonAsync(setInputs);
-    }
-
     try {
-      await pyodide.runPythonAsync(
-        'import webtkinter\n' +
+      // Build a single Python snippet: sync input values + handle event + collect widgets
+      let pythonSnippet = 'import webtkinter\n';
+      if (msg.inputValues) {
+        pythonSnippet += 'webtkinter._input_values = ' + JSON.stringify(msg.inputValues) + '\n';
+      }
+      pythonSnippet +=
         'webtkinter._handle_event(' + msg.widgetId + ', "' + msg.event + '")\n' +
-        '\n_cb_widgets = webtkinter._get_widget_commands()\n'
-      );
+        '_cb_widgets = webtkinter._get_widget_commands()\n';
 
-      const cbWidgets = pyodide.globals.get('_cb_widgets').toJs({ dict_converter: Object.fromEntries });
-      pyodide.globals.delete('_cb_widgets');
+      await pyodide.runPythonAsync(pythonSnippet);
+
+      const cbGlobals = pyodide.globals.get('_cb_widgets');
+      const cbWidgets = cbGlobals ? cbGlobals.toJs({ dict_converter: Object.fromEntries }) : [];
+      if (cbGlobals) pyodide.globals.delete('_cb_widgets');
 
       self.postMessage({
         type: 'callback:result',
