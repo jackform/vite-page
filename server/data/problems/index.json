@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-05-28T07:58:35.696Z",
+  "updatedAt": "2026-05-28T08:58:26.006Z",
   "problems": {
     "two-sum": {
       "file": "two-sum.json",
@@ -105,7 +105,31 @@
       ],
       "author": "teacher",
       "createdAt": "2026-05-28T07:57:45.321Z",
-      "updatedAt": "2026-05-28T07:58:35.696Z"
+      "updatedAt": "2026-05-28T08:58:26.006Z"
+    },
+    "message-encryptor-mpp88tbj": {
+      "file": "message-encryptor-mpp88tbj.json",
+      "title": "message_encryptor",
+      "difficulty": "easy",
+      "category": "encrypt",
+      "tags": [
+        "encrypt"
+      ],
+      "author": "teacher",
+      "createdAt": "2026-05-28T08:24:31.096Z",
+      "updatedAt": "2026-05-28T08:24:31.096Z"
+    },
+    "music-convertor-mpp8aalt": {
+      "file": "music-convertor-mpp8aalt.json",
+      "title": "music_convertor",
+      "difficulty": "easy",
+      "category": "string",
+      "tags": [
+        "string"
+      ],
+      "author": "teacher",
+      "createdAt": "2026-05-28T08:25:40.150Z",
+      "updatedAt": "2026-05-28T08:57:56.196Z"
     }
   }
 }
