@@ -4,14 +4,34 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Try multiple candidate paths for the data directory:
-// 1. Running from source (tsx): server/src/ → ../data/problems → server/data/problems
-// 2. Running compiled (node): server/dist/server/src/ → ../../../../data/problems → server/data/problems
+// Try multiple candidate paths for the data directory.
+// We prefer directories whose index.json already contains problems.
 const candidateDataDirs = [
-  path.resolve(__dirname, '..', 'data', 'problems'),
-  path.resolve(__dirname, '..', '..', '..', '..', 'data', 'problems'),
+  path.resolve(__dirname, '..', '..', '..', 'data', 'problems'), // compiled: dist/server/src → server/data
+  path.resolve(__dirname, '..', 'data', 'problems'),             // dev (tsx): server/src → server/data
+  path.resolve(process.cwd(), 'data', 'problems'),               // from server/ dir
 ];
-const DATA_DIR = candidateDataDirs.find((p) => fs.existsSync(p)) || candidateDataDirs[0];
+
+function findBestDataDir(): string {
+  for (const dir of candidateDataDirs) {
+    const idx = path.join(dir, 'index.json');
+    if (fs.existsSync(idx)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(idx, 'utf-8'));
+        if (data.problems && Object.keys(data.problems).length > 0) {
+          return dir; // existing dir with actual problems
+        }
+      } catch { /* corrupt index, keep searching */ }
+    }
+  }
+  // Fallback: first directory that exists at all
+  for (const dir of candidateDataDirs) {
+    if (fs.existsSync(dir)) return dir;
+  }
+  return candidateDataDirs[0];
+}
+
+const DATA_DIR = findBestDataDir();
 const INDEX_FILE = path.join(DATA_DIR, 'index.json');
 
 // Ensure the data directory exists
