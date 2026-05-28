@@ -111,11 +111,39 @@ body {
 /* ---- Main Layout ---- */
 
 .code-layout {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr;
+  display: flex;
   flex: 1;
   min-height: 0;
+}
+
+/* ---- Resize Handles ---- */
+
+.resize-handle-v,
+.resize-handle-h {
+  flex-shrink: 0;
+  background: transparent;
+  transition: background 0.2s;
+  z-index: 10;
+}
+
+.resize-handle-v {
+  width: 5px;
+  cursor: col-resize;
+}
+
+.resize-handle-v:hover,
+.resize-handle-v.active {
+  background: var(--code-accent);
+}
+
+.resize-handle-h {
+  height: 5px;
+  cursor: row-resize;
+}
+
+.resize-handle-h:hover,
+.resize-handle-h.active {
+  background: var(--code-accent);
 }
 
 /* ---- Problem Panel (Left) ---- */
@@ -123,8 +151,9 @@ body {
 .problem-panel {
   overflow-y: auto;
   padding: 20px 24px;
-  border-right: 1px solid var(--code-border);
   background: var(--code-bg-primary);
+  flex: 0 0 25%;
+  min-width: 200px;
 }
 
 .problem-header {
@@ -254,7 +283,9 @@ body {
 .editor-output-panel {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-height: 0;
+  min-width: 300px;
   background: var(--code-bg-secondary);
 }
 

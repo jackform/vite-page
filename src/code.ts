@@ -89,10 +89,12 @@ function renderLayout(): string {
         <span id="conn-text">Connected</span>
       </div>
     </nav>
-    <div class="code-layout">
+    <div class="code-layout" id="code-layout">
       <div class="problem-panel" id="problem-panel"></div>
-      <div class="editor-output-panel">
+      <div class="resize-handle-v" id="resize-handle-v"></div>
+      <div class="editor-output-panel" id="editor-output-panel">
         <div class="editor-panel" id="editor-panel"></div>
+        <div class="resize-handle-h" id="resize-handle-h"></div>
         <div class="action-bar">
           <button class="btn btn-run" id="btn-run" disabled>▶ Run</button>
           <button class="btn btn-tests" id="btn-tests" disabled>✓ Run Tests</button>
@@ -168,6 +170,76 @@ function renderProblem(problem: CodeProblem | AssignedProblem): string {
     ${problem.examples.length ? renderExamples(problem.examples) : ''}
     ${problem.constraints.length ? renderConstraints(problem.constraints) : ''}
   `;
+}
+
+/* ---- Resizable Panels ---- */
+
+function initResizeHandles(): void {
+  const layout = document.getElementById('code-layout')!;
+
+  // Vertical resize: problem panel | editor-output
+  const problemPanel = document.getElementById('problem-panel')!;
+  const vHandle = document.getElementById('resize-handle-v')!;
+  const editorOutput = document.getElementById('editor-output-panel')!;
+
+  let dragging: 'v' | 'h' | null = null;
+
+  function onMouseDown(which: 'v' | 'h') {
+    return (e: MouseEvent) => {
+      e.preventDefault();
+      dragging = which;
+      const handle = which === 'v' ? vHandle : document.getElementById('resize-handle-h')!;
+      handle.classList.add('active');
+      document.body.style.cursor = which === 'v' ? 'col-resize' : 'row-resize';
+      document.body.style.userSelect = 'none';
+    };
+  }
+
+  vHandle.addEventListener('mousedown', onMouseDown('v'));
+
+  // Horizontal resize: editor | output
+  const editorPanel = document.getElementById('editor-panel')!;
+  const hHandle = document.getElementById('resize-handle-h')!;
+  const outputPanel = document.getElementById('output-panel')!;
+
+  hHandle.addEventListener('mousedown', onMouseDown('h'));
+
+  document.addEventListener('mousemove', (e: MouseEvent) => {
+    if (!dragging) return;
+
+    if (dragging === 'v') {
+      const layoutRect = layout.getBoundingClientRect();
+      const newWidth = e.clientX - layoutRect.left;
+      const totalWidth = layoutRect.width;
+      const ratio = Math.max(0.1, Math.min(0.6, newWidth / totalWidth));
+      const pct = (ratio * 100).toFixed(1);
+      problemPanel.style.flex = `0 0 ${pct}%`;
+    }
+
+    if (dragging === 'h') {
+      const editorRect = editorOutput.getBoundingClientRect();
+      const newTopHeight = e.clientY - editorRect.top;
+      const totalHeight = editorRect.height;
+      const ratio = Math.max(0.15, Math.min(0.85, newTopHeight / totalHeight));
+      const pct = (ratio * 100).toFixed(1);
+      editorPanel.style.flex = `0 0 ${pct}%`;
+      outputPanel.style.flex = '1 1 auto';
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    vHandle.classList.remove('active');
+    hHandle.classList.remove('active');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    dragging = null;
+  });
+
+  // Default: editor 65%, output 35%
+  editorPanel.style.flex = '0 0 60%';
+  outputPanel.style.flex = '1 1 auto';
+  outputPanel.style.maxHeight = 'none';
 }
 
 function renderExamples(
@@ -349,6 +421,8 @@ async function initLab(sessionInfo: {
   // Load problems from server
   await loadProblemsFromServer();
   problemPanel.innerHTML = renderProblem(currentProblem);
+
+  initResizeHandles();
 
   session = new CodeSession(
     { roomId: sessionInfo.roomId, role: 'student', userId: sessionInfo.userId },
