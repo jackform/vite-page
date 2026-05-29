@@ -74,8 +74,8 @@ describe('ChatStore integration', () => {
   describe('sender permission logic', () => {
     it('student can only send to own room', () => {
       // Simulate: student in room-A tries to send to room-B
-      const studentRoomId = 'room-A';
-      const targetRoomId = 'room-B';
+      const studentRoomId: string = 'room-A';
+      const targetRoomId: string = 'room-B';
       expect(studentRoomId === targetRoomId).toBe(false);
     });
 

@@ -64,6 +64,7 @@ export interface ServerToClientEvents {
   'code:teacher-broadcast': (data: TeacherCodeUpdate) => void;
   'execution:relay': (data: ExecutionRelayRequest) => void;
   'execution:relay-broadcast': (data: RelayExecutionResult) => void;
+  'guidance:update': (data: { description: string }) => void;
 }
 
 /** Lock state for teacher lock-and-push workflow. */
@@ -94,7 +95,6 @@ export interface RelayExecutionResult {
   returnValue?: string;
   executionTime?: number;
   timestamp: number;
-  'guidance:update': (data: { description: string }) => void;
 }
 
 /** Chat message exchanged between teacher and student. */
