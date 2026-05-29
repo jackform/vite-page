@@ -59,6 +59,7 @@ export interface ServerToClientEvents {
   'problem:assigned': (data: { problem: AssignedProblem }) => void;
   'chat:message': (msg: ChatMessage) => void;
   'chat:history': (data: { roomId: string; messages: ChatMessage[] }) => void;
+  'guidance:update': (data: { description: string }) => void;
 }
 
 /** Chat message exchanged between teacher and student. */
@@ -103,4 +104,5 @@ export interface ClientToServerEvents {
   'problem:push': (data: { roomId: string; problem: AssignedProblem }) => void;
   'problem:push-all': (data: { problem: AssignedProblem }) => void;
   'chat:send': (data: { roomId: string; sender: 'student' | 'teacher'; text?: string; imageUrl?: string }) => void;
+  'guidance:push': (data: { roomId: string; description: string }) => void;
 }

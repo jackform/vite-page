@@ -167,6 +167,28 @@ export function registerHandlers(
     }
   });
 
+  // ---- Guidance Push ----
+
+  socket.on('guidance:push', (data: { roomId: string; description: string }) => {
+    if (!socket.data.isTeacher) return;
+
+    if (!data.roomId || typeof data.description !== 'string') return;
+
+    // Validate: description max 5_000_000 chars (~5MB, accommodates embedded images)
+    if (data.description.length > 5_000_000) return;
+
+    // Validate: no individual data URL exceeds 3M chars
+    const dataUrls = data.description.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g);
+    if (dataUrls) {
+      for (const url of dataUrls) {
+        if (url.length > 3_000_000) return;
+      }
+    }
+
+    // Forward to the room
+    io.to(data.roomId).emit('guidance:update', { description: data.description });
+  });
+
   // ---- Chat ----
 
   registerChatHandlers(io, socket, chatStore, teacherWatching, roomManager);
