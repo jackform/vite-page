@@ -3,6 +3,7 @@
  * and manage coding problems.
  */
 
+import './code.css';
 import './teacher.css';
 import './problem-manager.css';
 import './chat/chat.css';
@@ -199,13 +200,6 @@ function renderDashboard(): string {
           </div>
           <div class="monitor-push-bar" id="monitor-push-bar" style="display:none">
             <div class="push-bar-row">
-              <button class="btn btn-lock" id="btn-lock-toggle" title="鎖定編輯">🔒 鎖定編輯</button>
-              <button class="btn btn-run-locked hidden" id="btn-run-locked" title="在學生端執行代碼">▶ Run</button>
-              <button class="btn btn-unlock-push hidden" id="btn-unlock-push" title="推送代碼並解鎖">推送並解鎖</button>
-              <button class="btn btn-unlock-cancel hidden" id="btn-unlock-cancel" title="取消並恢復原始代碼">取消</button>
-              <span class="push-divider"></span>
-            </div>
-            <div class="push-bar-row">
               <select id="push-problem-select" class="push-select">
                 <option value="">選擇要推送的題目...</option>
               </select>
@@ -218,6 +212,12 @@ function renderDashboard(): string {
             <button class="monitor-view-tab" data-view="guidance">指導編輯</button>
           </div>
           <div class="monitor-view-content" id="monitor-view-code" style="display:none">
+            <div class="monitor-code-toolbar">
+              <button class="btn btn-lock" id="btn-lock-toggle" title="鎖定編輯">🔒 鎖定編輯</button>
+              <button class="btn btn-run-locked hidden" id="btn-run-locked" title="在學生端執行代碼">▶ Run</button>
+              <button class="btn btn-unlock-push hidden" id="btn-unlock-push" title="推送代碼並解鎖">推送並解鎖</button>
+              <button class="btn btn-unlock-cancel hidden" id="btn-unlock-cancel" title="取消並恢復原始代碼">取消</button>
+            </div>
             <div class="monitor-editor" id="monitor-editor"></div>
             <div id="monitor-tab-bar-container"></div>
             <div class="monitor-output" id="monitor-output">
@@ -557,7 +557,7 @@ function initDashboard(): void {
     btnUnlockPush.classList.toggle('hidden', !locked);
     btnUnlockCancel.classList.toggle('hidden', !locked);
     // Hide problem push buttons when locked
-    const pushRow = document.querySelector('.push-bar-row:nth-child(2)') as HTMLElement;
+    const pushRow = document.querySelector('#monitor-push-bar .push-bar-row') as HTMLElement;
     if (pushRow) pushRow.style.display = locked ? 'none' : 'flex';
   }
 
