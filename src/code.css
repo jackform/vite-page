@@ -293,6 +293,48 @@ body {
   flex: 1 1 0;
   min-height: 200px;
   overflow: hidden;
+  position: relative;
+}
+
+/* ---- Lock Overlay ---- */
+
+.lock-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  pointer-events: all;
+}
+
+[data-theme="light"] .lock-overlay {
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.lock-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 32px;
+  background: var(--code-bg-secondary);
+  border: 2px solid var(--code-accent);
+  border-radius: 12px;
+}
+
+.lock-icon {
+  font-size: 32px;
+}
+
+.lock-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--code-text-primary);
 }
 
 .editor-panel .cm-editor {

@@ -46,6 +46,10 @@ let currentEngine: EngineType = 'pyodide';
 let chatClient: ChatClient | null = null;
 let activeStudentTab: 'output' | 'chat' = 'output';
 
+// Lock & push state
+let isLockedByTeacher = false;
+let preLockCode = '';
+
 /* ---- Theme ---- */
 
 function loadTheme(): void {
@@ -98,7 +102,14 @@ function renderLayout(): string {
       <div class="problem-panel" id="problem-panel"></div>
       <div class="resize-handle-v" id="resize-handle-v"></div>
       <div class="editor-output-panel" id="editor-output-panel">
-        <div class="editor-panel" id="editor-panel"></div>
+        <div class="editor-panel" id="editor-panel">
+          <div class="lock-overlay hidden" id="lock-overlay">
+            <div class="lock-overlay-content">
+              <span class="lock-icon">🔒</span>
+              <span class="lock-text">教師正在編輯你的代碼...</span>
+            </div>
+          </div>
+        </div>
         <div class="resize-handle-h" id="resize-handle-h"></div>
         <div class="action-bar">
           <button class="btn btn-run" id="btn-run" disabled>▶ Run</button>
@@ -500,6 +511,77 @@ async function initLab(sessionInfo: {
     });
   }
 
+  // ---- Lock & Push Listeners ----
+
+  const lockOverlay = document.getElementById('lock-overlay')!;
+
+  socket.on('editor:locked', (data: { roomId: string; isLocked: boolean }) => {
+    if (data.roomId !== sessionInfo.roomId) return;
+    isLockedByTeacher = true;
+    preLockCode = editor.getCode();
+    editor.setReadOnly(true);
+    lockOverlay.classList.remove('hidden');
+    btnRun.disabled = true;
+    btnTests.disabled = true;
+  });
+
+  socket.on('editor:unlocked', (data: { roomId: string; isLocked: boolean }) => {
+    if (data.roomId !== sessionInfo.roomId) return;
+    isLockedByTeacher = false;
+    editor.setReadOnly(false);
+    lockOverlay.classList.add('hidden');
+    btnRun.disabled = false;
+    btnTests.disabled = false;
+  });
+
+  socket.on('code:teacher-broadcast', (data) => {
+    if (data.roomId !== sessionInfo.roomId) return;
+    isApplyingRemote = true;
+    editor.setCode(data.code);
+    session.applyRemoteCode(data.code);
+    isApplyingRemote = false;
+  });
+
+  socket.on('execution:relay', async (data) => {
+    if (data.roomId !== sessionInfo.roomId) return;
+    if (!executor.isReady()) return;
+
+    switchToOutputTab();
+    outputPanel.innerHTML = renderOutputLoading();
+
+    try {
+      let result;
+      if (executor instanceof CodeWidgetExecutor) {
+        result = await executor.execute(data.code);
+      } else {
+        result = await executor.execute(data.code);
+      }
+
+      // Emit result via raw socket
+      const rawSocket = socket.getRawSocket();
+      if (rawSocket) {
+        rawSocket.emit('execution:relay-result', {
+          roomId: sessionInfo.roomId,
+          status: result.status,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          returnValue: result.returnValue,
+          executionTime: result.executionTime,
+          timestamp: Date.now(),
+        });
+      }
+
+      // Also render locally
+      if (executor instanceof CodeWidgetExecutor) {
+        executor.renderWidgetOutput(outputPanel, result);
+      } else {
+        outputPanel.innerHTML = renderOutput(result);
+      }
+    } catch (err: any) {
+      outputPanel.innerHTML = `<div class="output-stderr">Relay execution error: ${escapeHtml(err.message)}</div>`;
+    }
+  });
+
   // Listen for teacher-pushed problems
   socket.on('problem:assigned', (data: { problem: AssignedProblem }) => {
     const problem = data.problem;
@@ -619,6 +701,7 @@ async function initLab(sessionInfo: {
 
   async function handleRun(): Promise<void> {
     if (!executor.isReady()) return;
+    if (isLockedByTeacher) return;
     switchToOutputTab();
     outputPanel.innerHTML = renderOutputLoading();
     const code = editor.getCode();
@@ -646,6 +729,7 @@ async function initLab(sessionInfo: {
 
   async function handleTests(): Promise<void> {
     if (!executor.isReady()) return;
+    if (isLockedByTeacher) return;
     switchToOutputTab();
     outputPanel.innerHTML = renderOutputLoading();
     const code = editor.getCode();

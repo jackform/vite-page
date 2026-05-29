@@ -17,6 +17,7 @@ export class CodeEditor {
   private onChangeCallback: ((code: string) => void) | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private themeCompartment = new Compartment();
+  private readOnlyCompartment = new Compartment();
 
   constructor(
     container: HTMLElement,
@@ -28,6 +29,7 @@ export class CodeEditor {
       basicSetup,
       python(),
       this.themeCompartment.of(isLight ? [] : oneDark),
+      this.readOnlyCompartment.of(readOnly ? EditorView.editable.of(false) : []),
       keymap.of([indentWithTab]),
       EditorView.updateListener.of((update) => {
         if (update.docChanged && this.onChangeCallback) {
@@ -35,10 +37,6 @@ export class CodeEditor {
         }
       }),
     ];
-
-    if (readOnly) {
-      extensions.push(EditorView.editable.of(false));
-    }
 
     this.view = new EditorView({
       state: EditorState.create({
@@ -78,6 +76,15 @@ export class CodeEditor {
   setTheme(isLight: boolean): void {
     this.view.dispatch({
       effects: this.themeCompartment.reconfigure(isLight ? [] : oneDark),
+    });
+  }
+
+  /** Toggle read-only mode (e.g., when teacher locks the editor). */
+  setReadOnly(readOnly: boolean): void {
+    this.view.dispatch({
+      effects: this.readOnlyCompartment.reconfigure(
+        readOnly ? EditorView.editable.of(false) : []
+      ),
     });
   }
 

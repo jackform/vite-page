@@ -9,6 +9,7 @@ import type {
 import { RoomManager } from './room-manager.js';
 import { ChatStore } from './chat-store.js';
 import { registerChatHandlers } from './chat-handlers.js';
+import { registerLockHandlers } from './lock-handlers.js';
 import { validateTeacherPassword } from './auth.js';
 
 // Track which student room each teacher is currently watching
@@ -50,12 +51,20 @@ export function registerHandlers(
       socket.emit('chat:history', { roomId: record.roomId, messages: chatHistory });
     }
 
+    // If the student was previously locked, re-notify
+    if (record.isLocked) {
+      socket.emit('editor:locked', { roomId: record.roomId, isLocked: true });
+    }
+
     io.emit('roster:update', { students: roomManager.getRoster() });
   });
 
   socket.on('code:update', (data: { code: string; timestamp: number }) => {
     const student = roomManager.getStudentBySocket(socket.id);
     if (!student) return;
+
+    // Block student-initiated updates when locked by teacher
+    if (student.isLocked) return;
 
     // Store latest code state on server
     roomManager.updateCode(socket.id, data.code, data.timestamp);
@@ -72,6 +81,9 @@ export function registerHandlers(
   socket.on('execution:result', (data) => {
     const student = roomManager.getStudentBySocket(socket.id);
     if (!student) return;
+
+    // Block student-initiated executions when locked by teacher
+    if (student.isLocked) return;
 
     const result = {
       roomId: student.roomId,
@@ -171,14 +183,32 @@ export function registerHandlers(
 
   registerChatHandlers(io, socket, chatStore, teacherWatching, roomManager);
 
+  // ---- Lock & Push ----
+
+  registerLockHandlers(io, socket, teacherWatching, roomManager);
+
   // ---- Disconnect ----
 
   socket.on('disconnect', () => {
+    // Auto-unlock: if teacher disconnects, unlock the student they were watching
+    const watchingRoom = teacherWatching.get(socket.id);
+    if (socket.data.isTeacher && watchingRoom) {
+      const student = roomManager.getStudentByRoomId(watchingRoom);
+      if (student && student.isLocked) {
+        roomManager.unlockStudent(student.socketId);
+        io.to(watchingRoom).emit('editor:unlocked', { roomId: watchingRoom, isLocked: false });
+      }
+    }
+
     teacherWatching.delete(socket.id);
 
     if (!socket.data.isTeacher) {
       const student = roomManager.removeStudent(socket.id);
       if (student) {
+        // Notify subscribed teachers that the locked student disconnected
+        if (student.isLocked) {
+          io.to(student.roomId).emit('editor:unlocked', { roomId: student.roomId, isLocked: false });
+        }
         io.emit('roster:update', { students: roomManager.getRoster() });
       }
     }
