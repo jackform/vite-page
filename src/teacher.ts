@@ -369,13 +369,24 @@ function initDashboard(): void {
     });
   }
 
-  function refreshPushDropdown(): void {
+  async function refreshPushDropdown(): Promise<void> {
     const select = document.getElementById('push-problem-select') as HTMLSelectElement;
     if (!select) return;
-    const problems = problemManager?.getProblems() || [];
+    let problems = problemManager?.getProblems() || [];
+    // 如果 ProblemManager 還沒初始化，直接從 API 加載題目列表
+    if (problems.length === 0 && !problemManager) {
+      try {
+        const res = await fetch('/api/problems');
+        if (res.ok) {
+          problems = await res.json();
+        }
+      } catch {
+        // API 不可用時保持下拉為空
+      }
+    }
     select.innerHTML = `
       <option value="">選擇要推送的題目...</option>
-      ${problems.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.title)}</option>`).join('')}
+      ${problems.map((p: { id: string; title: string }) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.title)}</option>`).join('')}
     `;
   }
 
