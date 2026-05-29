@@ -481,8 +481,8 @@ async function initLab(sessionInfo: {
     });
     tabBarContainer.appendChild(tabBar);
 
-    const chatPanel = createChatPanel('student', (text) => {
-      chatClient?.sendMessage(text);
+    const chatPanel = createChatPanel('student', (text, imageUrl) => {
+      chatClient?.sendMessage(text || undefined, imageUrl);
     });
     chatPanelContainer.innerHTML = '';
     chatPanelContainer.appendChild(chatPanel);

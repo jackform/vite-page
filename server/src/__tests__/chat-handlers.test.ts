@@ -16,7 +16,7 @@ describe('ChatStore integration', () => {
     function isValidMessage(text?: string, imageUrl?: string): boolean {
       if (!text && !imageUrl) return false;
       if (text !== undefined && text.length > 2000) return false;
-      if (imageUrl !== undefined && imageUrl.length > 600_000) return false;
+      if (imageUrl !== undefined && imageUrl.length > 3_000_000) return false;
       // Both text and imageUrl are strings, so pass type check
       return true;
     }
@@ -36,9 +36,14 @@ describe('ChatStore integration', () => {
       expect(isValidMessage(ok)).toBe(true);
     });
 
-    it('rejects imageUrl exceeding 600KB', () => {
-      const big = 'x'.repeat(600_001);
+    it('rejects imageUrl exceeding 3MB', () => {
+      const big = 'x'.repeat(3_000_001);
       expect(isValidMessage(undefined, big)).toBe(false);
+    });
+
+    it('accepts imageUrl at exactly 3MB', () => {
+      const ok = 'x'.repeat(3_000_000);
+      expect(isValidMessage(undefined, ok)).toBe(true);
     });
 
     it('accepts valid text-only message', () => {
@@ -116,8 +121,8 @@ describe('chat:send event handler behavior', () => {
     if (text && text.length > 2000) {
       return { success: false, error: 'Text exceeds 2000 characters' };
     }
-    if (imageUrl && imageUrl.length > 600_000) {
-      return { success: false, error: 'Image exceeds 600KB' };
+    if (imageUrl && imageUrl.length > 3_000_000) {
+      return { success: false, error: 'Image exceeds 3MB' };
     }
 
     if (isTeacher) {

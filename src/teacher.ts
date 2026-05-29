@@ -249,8 +249,8 @@ function initDashboard(): void {
   });
   monitorTabBarContainer.appendChild(tabBar);
 
-  const chatPanel = createChatPanel('teacher', (text) => {
-    chatClient?.sendMessage(text);
+  const chatPanel = createChatPanel('teacher', (text, imageUrl) => {
+    chatClient?.sendMessage(text || undefined, imageUrl);
   });
   monitorChatContainer.appendChild(chatPanel);
 
@@ -258,6 +258,7 @@ function initDashboard(): void {
 
   function resetChatForRoom(roomId: string): void {
     chatClient?.destroy();
+    (chatPanel as any).resetInput?.();
     if (!socket) return;
 
     chatClient = new ChatClient(socket, roomId, 'teacher');

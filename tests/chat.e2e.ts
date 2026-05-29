@@ -141,6 +141,55 @@ test.describe('Chat Module E2E', () => {
     await expect(chatPanel).toHaveClass(/hidden/);
   });
 
+  test('teacher sends image to student via file chooser', async ({ page, context }) => {
+    // --- Student page ---
+    const studentPage = await context.newPage();
+    await studentPage.goto('/code.html');
+    await studentPage.fill('#reg-name', 'Grace');
+    await studentPage.fill('#reg-student-id', 'S007');
+    await studentPage.click('#reg-submit');
+    await studentPage.waitForSelector('.code-editor', { timeout: 10000 });
+
+    // --- Teacher page ---
+    const teacherPage = await context.newPage();
+    await teacherPage.goto('/teacher.html');
+    await teacherPage.fill('#auth-password', '');
+    await teacherPage.click('#auth-submit');
+    await teacherPage.waitForSelector('.teacher-layout', { timeout: 10000 });
+
+    // Select student Grace
+    const graceItem = teacherPage.locator('.roster-item').filter({ hasText: 'Grace' });
+    await expect(graceItem).toBeVisible({ timeout: 5000 });
+    await graceItem.click();
+
+    // Switch to chat tab on teacher side
+    await teacherPage.locator('.chat-tab').filter({ hasText: '訊息' }).click();
+
+    // Upload image via file chooser
+    const fileChooserPromise = teacherPage.waitForEvent('filechooser');
+    await teacherPage.locator('.chat-image-btn').click();
+    const fileChooser = await fileChooserPromise;
+    await fileChooser.setFiles('tests/fixtures/sample.png');
+
+    // Preview should be visible
+    await expect(teacherPage.locator('.chat-image-preview')).toBeVisible({ timeout: 3000 });
+
+    // Send with text
+    await teacherPage.fill('.chat-input', 'Here is a screenshot');
+    await teacherPage.click('.chat-send-btn');
+
+    // Preview should be hidden after send
+    await expect(teacherPage.locator('.chat-image-preview')).toBeHidden({ timeout: 3000 });
+
+    // Teacher sees own message with image
+    await expect(teacherPage.locator('.chat-message.mine')).toContainText('Here is a screenshot');
+    await expect(teacherPage.locator('.chat-message.mine .chat-message-image img')).toBeVisible({ timeout: 3000 });
+
+    // Student receives the image
+    await studentPage.locator('.chat-tab').filter({ hasText: '訊息' }).click();
+    await expect(studentPage.locator('.chat-message.theirs .chat-message-image img')).toBeVisible({ timeout: 5000 });
+  });
+
   test('switching students on teacher side updates chat', async ({ page, context }) => {
     // Register two students
     const s1 = await context.newPage();

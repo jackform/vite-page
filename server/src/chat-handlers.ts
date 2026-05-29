@@ -18,7 +18,7 @@ export function registerChatHandlers(
     if (data.text && data.text.length > 2000) {
       return;
     }
-    if (data.imageUrl && data.imageUrl.length > 600_000) {
+    if (data.imageUrl && data.imageUrl.length > 3_000_000) {
       return;
     }
 
