@@ -471,57 +471,76 @@ function initDashboard(): void {
     renderRoster();
   }
 
+  // Helper to fetch a problem, with fallback to API when ProblemManager is not initialized
+  async function fetchProblem(problemId: string): Promise<AssignedProblem | null> {
+    // Try ProblemManager first (has full problem data in memory)
+    if (problemManager) {
+      const problem = await problemManager.getProblem(problemId);
+      if (problem) {
+        return {
+          id: problem.id,
+          title: problem.title,
+          difficulty: problem.difficulty,
+          description: problem.description,
+          examples: problem.examples,
+          constraints: problem.constraints,
+          starterCode: problem.starterCode,
+          testCases: problem.testCases,
+        };
+      }
+    }
+
+    // Fallback: fetch directly from API
+    try {
+      const res = await fetch(`/api/problems/${problemId}`);
+      if (res.ok) {
+        const problem = await res.json();
+        return {
+          id: problem.id,
+          title: problem.title,
+          difficulty: problem.difficulty,
+          description: problem.description,
+          examples: problem.examples,
+          constraints: problem.constraints,
+          starterCode: problem.starterCode,
+          testCases: problem.testCases,
+        };
+      }
+    } catch {
+      // API unavailable
+    }
+    return null;
+  }
+
   // Push button
   document.getElementById('btn-push-to-student')?.addEventListener('click', async () => {
-    if (!selectedRoomId || !problemManager) return;
+    if (!selectedRoomId) return;
     const select = document.getElementById('push-problem-select') as HTMLSelectElement;
     const problemId = select.value;
     if (!problemId) return;
 
-    const problem = await problemManager.getProblem(problemId);
-    if (!problem) return;
-
-    const assigned: AssignedProblem = {
-      id: problem.id,
-      title: problem.title,
-      difficulty: problem.difficulty,
-      description: problem.description,
-      examples: problem.examples,
-      constraints: problem.constraints,
-      starterCode: problem.starterCode,
-      testCases: problem.testCases,
-    };
+    const assigned = await fetchProblem(problemId);
+    if (!assigned) return;
 
     socket?.emit('problem:push', { roomId: selectedRoomId, problem: assigned });
     select.value = '';
-    alert(`已推送「${problem.title}」給學生`);
+    alert(`已推送「${assigned.title}」給學生`);
   });
 
   document.getElementById('btn-push-to-all')?.addEventListener('click', async () => {
-    if (!problemManager) return;
+    if (!selectedRoomId) return;
     const select = document.getElementById('push-problem-select') as HTMLSelectElement;
     const problemId = select.value;
     if (!problemId) return;
 
     if (!confirm('確定要推送給所有學生嗎？')) return;
 
-    const problem = await problemManager.getProblem(problemId);
-    if (!problem) return;
-
-    const assigned: AssignedProblem = {
-      id: problem.id,
-      title: problem.title,
-      difficulty: problem.difficulty,
-      description: problem.description,
-      examples: problem.examples,
-      constraints: problem.constraints,
-      starterCode: problem.starterCode,
-      testCases: problem.testCases,
-    };
+    const assigned = await fetchProblem(problemId);
+    if (!assigned) return;
 
     socket?.emit('problem:push-all', { problem: assigned });
     select.value = '';
-    alert(`已推送「${problem.title}」給所有學生`);
+    alert(`已推送「${assigned.title}」給所有學生`);
   });
 
   // ---- Lock & Push Button Handlers ----
