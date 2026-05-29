@@ -94,9 +94,7 @@ export interface RelayExecutionResult {
   returnValue?: string;
   executionTime?: number;
   timestamp: number;
-=======
   'guidance:update': (data: { description: string }) => void;
->>>>>>> 30c551f (add teacher guidance push feature with live preview editor)
 }
 
 /** Chat message exchanged between teacher and student. */
