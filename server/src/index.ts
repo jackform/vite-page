@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { RoomManager } from './room-manager.js';
+import { ChatStore } from './chat-store.js';
 import { registerHandlers } from './handlers.js';
 import * as problemStore from './problem-store.js';
 import type { ClientToServerEvents, ServerToClientEvents } from '../../shared/types.js';
@@ -42,6 +43,7 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(server, {
 });
 
 const roomManager = new RoomManager();
+const chatStore = new ChatStore();
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
@@ -104,7 +106,7 @@ app.delete('/api/problems/:id', (req, res) => {
 });
 
 io.on('connection', (socket) => {
-  registerHandlers(io, socket, roomManager);
+  registerHandlers(io, socket, roomManager, chatStore);
 });
 
 const PORT = process.env.PORT || 3001;

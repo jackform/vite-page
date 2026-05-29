@@ -57,6 +57,18 @@ export interface ServerToClientEvents {
   }) => void;
   'execution:broadcast': (data: RemoteExecutionResult) => void;
   'problem:assigned': (data: { problem: AssignedProblem }) => void;
+  'chat:message': (msg: ChatMessage) => void;
+  'chat:history': (data: { roomId: string; messages: ChatMessage[] }) => void;
+}
+
+/** Chat message exchanged between teacher and student. */
+export interface ChatMessage {
+  id: string;
+  roomId: string;
+  sender: 'student' | 'teacher';
+  text?: string;
+  imageUrl?: string;
+  timestamp: number;
 }
 
 /** A problem as sent to the student (without teacher-only fields). */
@@ -90,4 +102,5 @@ export interface ClientToServerEvents {
   'room:unsubscribe': (data: { roomId: string }) => void;
   'problem:push': (data: { roomId: string; problem: AssignedProblem }) => void;
   'problem:push-all': (data: { problem: AssignedProblem }) => void;
+  'chat:send': (data: { roomId: string; sender: 'student' | 'teacher'; text?: string; imageUrl?: string }) => void;
 }

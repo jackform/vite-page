@@ -102,6 +102,11 @@ export class CodeSocket {
     this.socket?.off(event, handler as any);
   }
 
+  /** Expose the underlying socket for extension modules (e.g. chat). */
+  getRawSocket(): Socket<ServerToClientEvents, ClientToServerEvents> | null {
+    return this.socket;
+  }
+
   disconnect(): void {
     this.socket?.disconnect();
     this.socket = null;

@@ -10,6 +10,7 @@
  */
 
 import './code.css';
+import './chat/chat.css';
 import { marked } from 'marked';
 import Sk from 'skulpt';
 import { CodeEditor } from './code-editor';
@@ -18,10 +19,12 @@ import { CodeWidgetExecutor } from './code-widget-executor';
 import { SkulptExecutor } from './code-skulpt-executor';
 import { CodeSession } from './code-session';
 import { CodeSocket } from './code-socket';
+import { ChatClient } from './chat/chat-client';
+import { createChatTabs, createChatPanel, appendMessage, renderHistory, clearChat } from './chat/chat-ui';
 import { problems as fallbackProblems, defaultProblem as fallbackDefault } from './code-problems';
 import { renderOutput, renderOutputLoading, escapeHtml } from './code-output';
 import type { CodeProblem, ExecutionStatus } from './code-types';
-import type { AssignedProblem } from '../shared/types';
+import type { AssignedProblem, ChatMessage } from '../shared/types';
 
 const THEME_KEY = 'python-lab-theme';
 const ENGINE_KEY = 'python-lab-engine';
@@ -40,6 +43,8 @@ let problemIds: string[] = [];
 let currentProblem: CodeProblem = fallbackDefault;
 let isApplyingRemote = false;
 let currentEngine: EngineType = 'pyodide';
+let chatClient: ChatClient | null = null;
+let activeStudentTab: 'output' | 'chat' = 'output';
 
 /* ---- Theme ---- */
 
@@ -114,9 +119,11 @@ function renderLayout(): string {
         <div class="turtle-canvas-wrapper hidden" id="turtle-canvas-wrapper">
           <div id="turtle-canvas"></div>
         </div>
+        <div id="tab-bar-container"></div>
         <div class="output-panel" id="output-panel">
           <div class="output-placeholder">Python environment is loading, please wait...</div>
         </div>
+        <div id="chat-panel-container" class="chat-panel hidden"></div>
       </div>
     </div>
   `;
@@ -458,6 +465,41 @@ async function initLab(sessionInfo: {
   socket.onDisconnect(() => updateConnStatus());
   socket.onConnect(() => updateConnStatus());
 
+  // ---- Chat ----
+
+  const rawSocket = socket.getRawSocket();
+  const tabBarContainer = document.getElementById('tab-bar-container')!;
+  const chatPanelContainer = document.getElementById('chat-panel-container')!;
+
+  if (rawSocket) {
+    chatClient = new ChatClient(rawSocket, sessionInfo.roomId, 'student');
+
+    const tabBar = createChatTabs((tab) => {
+      activeStudentTab = tab;
+      outputPanel.style.display = tab === 'output' ? '' : 'none';
+      chatPanelContainer.classList.toggle('hidden', tab !== 'chat');
+    });
+    tabBarContainer.appendChild(tabBar);
+
+    const chatPanel = createChatPanel('student', (text) => {
+      chatClient?.sendMessage(text);
+    });
+    chatPanelContainer.innerHTML = '';
+    chatPanelContainer.appendChild(chatPanel);
+    chatPanelContainer.classList.add('hidden');
+
+    const messagesEl = chatPanel.querySelector('.chat-messages')! as HTMLElement;
+
+    chatClient.onMessage((msg: ChatMessage) => {
+      const isMine = msg.sender === 'student';
+      appendMessage(messagesEl, msg, isMine);
+    });
+
+    chatClient.onHistory((messages: ChatMessage[]) => {
+      renderHistory(messagesEl, messages, (msg) => msg.sender === 'student');
+    });
+  }
+
   // Listen for teacher-pushed problems
   socket.on('problem:assigned', (data: { problem: AssignedProblem }) => {
     const problem = data.problem;
@@ -565,8 +607,19 @@ async function initLab(sessionInfo: {
     }
   });
 
+  function switchToOutputTab(): void {
+    if (activeStudentTab !== 'output') {
+      activeStudentTab = 'output';
+      outputPanel.style.display = '';
+      chatPanelContainer.classList.add('hidden');
+      const tabs = tabBarContainer.querySelectorAll('.chat-tab');
+      tabs.forEach((t) => t.classList.toggle('active', (t as HTMLElement).dataset.tab === 'output'));
+    }
+  }
+
   async function handleRun(): Promise<void> {
     if (!executor.isReady()) return;
+    switchToOutputTab();
     outputPanel.innerHTML = renderOutputLoading();
     const code = editor.getCode();
     if (executor instanceof CodeWidgetExecutor) {
@@ -593,6 +646,7 @@ async function initLab(sessionInfo: {
 
   async function handleTests(): Promise<void> {
     if (!executor.isReady()) return;
+    switchToOutputTab();
     outputPanel.innerHTML = renderOutputLoading();
     const code = editor.getCode();
     if (executor instanceof CodeWidgetExecutor) {

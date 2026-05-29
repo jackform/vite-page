@@ -7,6 +7,8 @@ import type {
   ServerToClientEvents,
 } from '../../shared/types.js';
 import { RoomManager } from './room-manager.js';
+import { ChatStore } from './chat-store.js';
+import { registerChatHandlers } from './chat-handlers.js';
 import { validateTeacherPassword } from './auth.js';
 
 // Track which student room each teacher is currently watching
@@ -15,7 +17,8 @@ const teacherWatching: Map<string, string> = new Map();
 export function registerHandlers(
   io: Server<ClientToServerEvents, ServerToClientEvents>,
   socket: Socket<ClientToServerEvents, ServerToClientEvents>,
-  roomManager: RoomManager
+  roomManager: RoomManager,
+  chatStore: ChatStore
 ): void {
   // ---- Student Events ----
 
@@ -40,6 +43,12 @@ export function registerHandlers(
       studentName: record.name,
       studentId: record.studentId,
     });
+
+    // Send existing chat history to the newly registered student
+    const chatHistory = chatStore.getHistory(record.roomId);
+    if (chatHistory.length > 0) {
+      socket.emit('chat:history', { roomId: record.roomId, messages: chatHistory });
+    }
 
     io.emit('roster:update', { students: roomManager.getRoster() });
   });
@@ -123,6 +132,11 @@ export function registerHandlers(
     if (student?.assignedProblem) {
       socket.emit('problem:assigned', { problem: student.assignedProblem });
     }
+    // Send chat history to the subscribing teacher
+    const chatHistory = chatStore.getHistory(data.roomId);
+    if (chatHistory.length > 0) {
+      socket.emit('chat:history', { roomId: data.roomId, messages: chatHistory });
+    }
   });
 
   socket.on('room:unsubscribe', (data: { roomId: string }) => {
@@ -152,6 +166,10 @@ export function registerHandlers(
       }
     }
   });
+
+  // ---- Chat ----
+
+  registerChatHandlers(io, socket, chatStore, teacherWatching, roomManager);
 
   // ---- Disconnect ----
 

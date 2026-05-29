@@ -9,11 +9,18 @@
     "preview": "vite preview",
     "server:dev": "cd server && npm run dev",
     "server:build": "cd server && npm run build",
-    "server:start": "cd server && npm start"
+    "server:start": "cd server && npm start",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@vitest/coverage-v8": "^4.1.7",
+    "jsdom": "^29.1.1",
     "typescript": "^6.0.3",
-    "vite": "^8.0.13"
+    "vite": "^8.0.13",
+    "vitest": "^4.1.7"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",

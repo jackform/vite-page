@@ -5,15 +5,19 @@
 
 import './teacher.css';
 import './problem-manager.css';
+import './chat/chat.css';
 import { io, Socket } from 'socket.io-client';
 import { CodeEditor } from './code-editor';
 import { renderOutput, escapeHtml } from './code-output';
 import { ProblemManager } from './problem-manager';
+import { ChatClient } from './chat/chat-client';
+import { createChatTabs, createChatPanel, appendMessage, renderHistory, clearChat } from './chat/chat-ui';
 import type { Problem, ProblemMeta } from './problem-manager';
 import type {
   RosterEntry,
   RemoteExecutionResult,
   AssignedProblem,
+  ChatMessage,
   ServerToClientEvents,
   ClientToServerEvents,
 } from '../shared/types';
@@ -29,6 +33,8 @@ let rosterEntries: RosterEntry[] = [];
 let password = '';
 let currentTab: 'monitor' | 'problems' = 'monitor';
 let problemManager: ProblemManager | null = null;
+let chatClient: ChatClient | null = null;
+let activeMonitorTab: 'output' | 'chat' = 'output';
 
 /* ---- Theme ---- */
 
@@ -185,9 +191,11 @@ function renderDashboard(): string {
             <button class="btn btn-push-all" id="btn-push-to-all">推送給所有學生</button>
           </div>
           <div class="monitor-editor" id="monitor-editor"></div>
+          <div id="monitor-tab-bar-container"></div>
           <div class="monitor-output" id="monitor-output">
             <div class="output-placeholder">選擇學生後，此處將顯示執行結果</div>
           </div>
+          <div id="monitor-chat-container" class="chat-panel hidden"></div>
         </div>
       </div>
     </div>
@@ -228,6 +236,41 @@ function initDashboard(): void {
 
   // Tab switching
   initTabs();
+
+  /* ---- Chat ---- */
+
+  const monitorTabBarContainer = document.getElementById('monitor-tab-bar-container')!;
+  const monitorChatContainer = document.getElementById('monitor-chat-container')!;
+
+  const tabBar = createChatTabs((tab) => {
+    activeMonitorTab = tab;
+    monitorOutput.style.display = tab === 'output' ? '' : 'none';
+    monitorChatContainer.classList.toggle('hidden', tab !== 'chat');
+  });
+  monitorTabBarContainer.appendChild(tabBar);
+
+  const chatPanel = createChatPanel('teacher', (text) => {
+    chatClient?.sendMessage(text);
+  });
+  monitorChatContainer.appendChild(chatPanel);
+
+  const messagesContainer = chatPanel.querySelector('.chat-messages')! as HTMLElement;
+
+  function resetChatForRoom(roomId: string): void {
+    chatClient?.destroy();
+    if (!socket) return;
+
+    chatClient = new ChatClient(socket, roomId, 'teacher');
+
+    chatClient.onMessage((msg: ChatMessage) => {
+      const isMine = msg.sender === 'teacher';
+      appendMessage(messagesContainer, msg, isMine);
+    });
+
+    chatClient.onHistory((messages: ChatMessage[]) => {
+      renderHistory(messagesContainer, messages, (msg) => msg.sender === 'teacher');
+    });
+  }
 
   /* ---- Monitor Tab ---- */
 
@@ -279,6 +322,9 @@ function initDashboard(): void {
 
     selectedRoomId = roomId;
     socket?.emit('room:subscribe', { roomId });
+
+    // Initialize chat for this student
+    resetChatForRoom(roomId);
 
     const entry = rosterEntries.find((e) => e.roomId === roomId);
     if (entry) {
@@ -394,6 +440,9 @@ function initDashboard(): void {
   btnLogout.addEventListener('click', () => {
     problemManager?.destroy();
     problemManager = null;
+    chatClient?.destroy();
+    chatClient = null;
+    clearChat(messagesContainer);
     socket?.disconnect();
     socket = null;
     selectedRoomId = null;
