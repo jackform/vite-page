@@ -29,6 +29,17 @@ npx playwright test --headed --debug                      # E2E with browser vis
 
 **Vitest** (unit/integration): Config in `vitest.config.ts`. Uses `globals: true`, `environment: 'node'` by default. Browser tests use per-file `@vitest-environment jsdom` comments. Test files follow `*.test.ts` pattern.
 
+Frontend unit tests live in `src/__tests__/`:
+- `code-editor.test.ts` — CodeMirror editor wrapper (jsdom environment): instantiation, getCode/setCode, onChange debouncing, theme switching, setReadOnly
+- `lock-client.test.ts` — mock-socket-based tests for lock/unlock event handling logic
+
+Server unit tests live in `server/src/__tests__/`:
+- `chat-store.test.ts` — message CRUD, per-room isolation
+- `chat-handlers.test.ts` — validation rules, message routing
+- `lock-handlers.test.ts` — lock/unlock event handling
+- `room-manager.test.ts` — student session state management
+- `guidance.test.ts` — guidance push validation (size limits, data URL checks)
+
 **Playwright** (E2E): Config in `playwright.config.ts`. Tests live in `tests/`. E2E test files: `chat.e2e.ts` (bidirectional messaging), `lock-and-push.e2e.ts` (teacher lock/execution relay), `guidance.e2e.ts` (teacher guidance push). Web server config auto-starts both the backend (port 3001) and frontend (port 5173) dev servers with `reuseExistingServer: true`.
 
 ## Architecture
@@ -210,9 +221,11 @@ Design proposals — some have since been implemented:
 
 ## Deployment
 
-**Frontend (GitHub Pages):** Push to `main` triggers `.github/workflows/deploy.yml`. Set `VITE_SERVER_URL` in GitHub Actions Variables to point to the backend server.
+**Frontend (GitHub Pages):** Push to `main` triggers `.github/workflows/deploy.yml`. The workflow: checkout → install Node 20 → `npm ci` → `npm run build` (with `VITE_SERVER_URL` from GitHub Actions Variables) → upload artifact → deploy to Pages. The repo's GitHub Pages source must be set to "GitHub Actions" (one-time setup).
 
 **Backend (standalone server):** Clone repo, `npm install && cd server && npm install`, `npx vite build && npm run server:build`, then `cd server && node dist/index.js`. The server serves frontend static files from `dist/` so a single port handles everything. Requires Node >=20 (use `unofficial-builds.nodejs.org` glibc-217 builds for older Ubuntu).
+
+**Server TypeScript:** The server has its own `tsconfig.json` with `rootDir: ".."` so it can import shared types from `../shared/types.js`. Server uses `"target": "ES2022"` (vs root's `ES2020`).
 
 ### Theme system
 
