@@ -29,7 +29,7 @@ npx playwright test --headed --debug                      # E2E with browser vis
 
 **Vitest** (unit/integration): Config in `vitest.config.ts`. Uses `globals: true`, `environment: 'node'` by default. Browser tests use per-file `@vitest-environment jsdom` comments. Test files follow `*.test.ts` pattern.
 
-**Playwright** (E2E): Config in `playwright.config.ts`. Tests live in `tests/`. Web server config auto-starts both the backend (port 3001) and frontend (port 5173) dev servers with `reuseExistingServer: true`.
+**Playwright** (E2E): Config in `playwright.config.ts`. Tests live in `tests/`. E2E test files: `chat.e2e.ts` (bidirectional messaging), `lock-and-push.e2e.ts` (teacher lock/execution relay), `guidance.e2e.ts` (teacher guidance push). Web server config auto-starts both the backend (port 3001) and frontend (port 5173) dev servers with `reuseExistingServer: true`.
 
 ## Architecture
 
@@ -50,6 +50,8 @@ Node.js + Express + Socket.io server that powers the real-time student-teacher s
 - `server/src/auth.ts` — constant-time teacher password validation against `TEACHER_PASSWORD` env var
 - `server/src/chat-store.ts` — in-memory store of chat messages per room (`addMessage`, `getHistory`)
 - `server/src/chat-handlers.ts` — `chat:send` handler with validation (text ≤2000 chars, image ≤600KB), routes messages to the correct room
+- `server/src/lock-handlers.ts` — teacher lock-and-push: lock student editor, push teacher code, relay execution through student's Pyodide
+- `server/src/problem-store.ts` — CRUD for problems stored as JSON files on disk (`server/data/problems/`)
 
 **Env vars:** `PORT` (default 3001), `TEACHER_PASSWORD`, `CORS_ORIGIN` (comma-separated, defaults to `*`).
 
@@ -72,8 +74,18 @@ Node.js + Express + Socket.io server that powers the real-time student-teacher s
 | `chat:send` | Both → Server | Send a chat message `{ roomId, sender, text?, imageUrl? }` |
 | `chat:message` | Server → Both | Broadcast a message to the room |
 | `chat:history` | Server → Both | Full history delivered on subscribe (one-shot) |
+| `editor:lock` / `editor:unlock` | Teacher → Server | Lock/unlock a student's editor |
+| `editor:locked` / `editor:unlocked` | Server → Both | Broadcast lock state change |
+| `code:teacher-update` | Teacher → Server | Teacher pushes code to locked student |
+| `code:teacher-broadcast` | Server → Both | Teacher's code relayed to student's editor |
+| `execution:request` | Teacher → Server | Teacher requests execution via student's Pyodide |
+| `execution:relay` | Server → Student | Student receives relayed execution request |
+| `execution:relay-result` | Student → Server | Student returns relayed execution result |
+| `execution:relay-broadcast` | Server → Teacher | Teacher receives relayed execution result |
+| `guidance:push` | Teacher → Server | Push a guidance description to a student |
+| `guidance:update` | Server → Student | Student receives guidance update |
 
-Server stores latest code and execution result per student in `RoomManager` (also caches `assignedProblem`). When a teacher subscribes to a room, the cached state (code, execution, assigned problem, chat history) is sent immediately.
+Server stores latest code and execution result per student in `RoomManager` (also caches `assignedProblem` and `isLocked` state). When a teacher subscribes to a room, the cached state (code, execution, assigned problem, chat history, lock state) is sent immediately. When a student is locked, their `code:update` and `execution:result` events are blocked server-side; only the teacher can drive code changes and execution via the relay mechanism.
 
 ### Chat module (`src/chat/`)
 
@@ -94,6 +106,25 @@ Real-time text messaging between teacher and student within a monitored room. Ch
 
 The `ChatMessage` type (in `shared/types.ts`) has `id`, `roomId`, `sender` (`'student' | 'teacher'`), optional `text` and `imageUrl`, and `timestamp`.
 
+### Lock & Push Code (`server/src/lock-handlers.ts`)
+
+Teacher can lock a student's editor, push code edits, and trigger execution relayed through the student's Pyodide instance. When locked, the student's local `code:update` and `execution:result` are blocked server-side.
+
+**Flow:** Teacher clicks "Lock" → `editor:lock` → server sets `isLocked=true` on the student record → `editor:locked` broadcast to room. Student's editor becomes read-only. Teacher types code in their own CodeMirror instance → debounced `code:teacher-update` → server stores the code as the student's `currentCode` → `code:teacher-broadcast` to room → student's editor updates via teacher's code. Teacher clicks "Run" → `execution:request` → server forwards `execution:relay` to student → student's Pyodide executes the code → `execution:relay-result` back to server → `execution:relay-broadcast` to teacher. Teacher clicks "Unlock" to restore normal student control.
+
+Auto-unlock on disconnect: if the teacher disconnects, the watched student is automatically unlocked. If a locked student disconnects, teachers are notified.
+
+**E2E tests:** `tests/lock-and-push.e2e.ts` — covers lock/unlock flow, teacher code push during lock, execution relay, and auto-unlock on disconnect.
+
+### Guidance Push (`guidance:push` / `guidance:update`)
+
+Teacher can push rich markdown guidance (with embedded images) to a student. The guidance appears in the student's guidance panel with live-rendered Markdown.
+
+- `guidance:push` (Teacher → Server): `{ roomId, description }` — description max 5MB, individual embedded data URLs max 3MB each.
+- `guidance:update` (Server → Student): `{ description }` — student renders it via `marked.parse()`.
+
+**E2E tests:** `tests/guidance.e2e.ts`.
+
 ### Coding lab page (`code.html` → `src/code.ts`)
 
 A LeetCode-style Python coding platform with CodeMirror 6 editor, Pyodide-based Python execution in a Web Worker, real-time code sync to backend, and a test runner. Chinese-localized (zh-HK), dark/light theme.
@@ -107,10 +138,12 @@ A LeetCode-style Python coding platform with CodeMirror 6 editor, Pyodide-based 
 - `src/code-socket.ts` — Socket.io client wrapper. `register(identity)` connects and waits for `session:registered`. Generic `on`/`off` methods for typed event listening (used for `problem:assigned`). Uses `VITE_SERVER_URL` env var or falls back to `window.location.origin`.
 - `src/code-editor.ts` — CodeMirror 6 wrapper with Python mode, indentWithTab. Exposes `getCode()`, `setCode()`, `onChange()` (debounced 300ms), `setTheme(isLight)`. Constructor accepts optional `readOnly` and `isLight` booleans. Theme is switched dynamically via a `Compartment` — no editor re-creation needed. Also used by `ProblemManager` in teacher page.
 - `src/code-executor.ts` — manages Pyodide Web Worker. Handles execute and runTests with timeouts; on timeout terminates and auto-recreates the worker.
+- `src/code-skulpt-executor.ts` — `SkulptExecutor`: alternative Python executor using the Skulpt npm package. Runs Python (mostly 2.x) directly in the main thread with built-in turtle graphics support (`import turtle` draws to a Canvas). Handles Skulpt Suspensions from animated drawing operations.
+- `src/code-widget-executor.ts` — `CodeWidgetExecutor`: Pyodide-based executor with webtkinter support. Renders tkinter widgets (Button, Label, Entry, Text, Frame, Toplevel) as DOM elements. Handles widget events by forwarding interactions back to Python callbacks. See `WEBTKINTER_GAPS.md` for tkinter compatibility notes.
 - `src/code-output.ts` — shared `renderOutput()`, `renderOutputLoading()`, `escapeHtml()` used by both student and teacher pages.
 - `src/code.css` — dark/light theme CSS, registration overlay styles, notification toast (`.lab-notification`).
 
-**Web Worker** (`public/code-worker.js`): Classic worker using `importScripts` to load Pyodide from CDN. Placed in `public/` so Vite serves it as-is without processing.
+**Web Workers** (`public/`): `code-worker.js` — classic worker using `importScripts` to load Pyodide from CDN (used by `CodeExecutor`). `code-widget-worker.js` — worker that injects the webtkinter module into Pyodide for tkinter widget support (used by `CodeWidgetExecutor`). Placed in `public/` so Vite serves them as-is without processing.
 
 **Problem loading:** On init, fetches `GET /api/problems` for the full list (storing metadata for the dropdown), then `GET /api/problems/:id` for the first problem's full content. Additional problems load on demand when selected from the dropdown. `marked` renders Markdown descriptions with GFM line breaks. A `problem:assigned` Socket listener handles teacher-pushed problems by adding them to the local cache and switching immediately.
 
@@ -164,10 +197,16 @@ The main `tsconfig.json` includes `"src"` and `"shared"` so frontend code can im
 
 ## Design docs (`docs/`)
 
-Design proposals for planned features — implementation is NOT yet complete:
+Design proposals — some have since been implemented:
 - `chat-testing.md` — testing strategy for the chat module (unit, integration, E2E)
 - `problem-push-flow.md` — student inbox + active problem design, decoupling teacher pushes from immediate code override
-- `teacher-intervention-proposal.md` — three proposals for teacher lock-and-edit student code flow
+- `teacher-intervention-proposal.md` — three proposals for teacher lock-and-edit student code flow (option 3 implemented as Lock & Push Code)
+
+## Reference docs
+
+- `DEPLOY.md` — detailed deployment instructions for both frontend (GitHub Pages) and backend.
+- `WEBTKINTER_GAPS.md` — compatibility gaps between webtkinter and standard tkinter (widget parameters, unsupported features).
+- `adapted/` — standalone Python helper scripts (`message_encryptor.py`, `music_converter.py`) ported from a previous project, unrelated to the main app.
 
 ## Deployment
 
