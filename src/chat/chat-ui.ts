@@ -71,7 +71,7 @@ export function createChatPanel(
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
   fileInput.accept = 'image/*';
-  fileInput.hidden = true;
+  fileInput.style.cssText = 'position:absolute;left:-99999px';
   panel.appendChild(fileInput);
 
   const inputArea = document.createElement('div');

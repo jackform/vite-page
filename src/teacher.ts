@@ -244,7 +244,7 @@ function renderDashboard(): string {
                   <span id="guidance-image-label"></span>
                   <button class="guidance-image-remove" id="guidance-image-remove" title="移除圖片">&times;</button>
                 </div>
-                <input type="file" id="guidance-file-input" accept="image/*" hidden />
+                <input type="file" id="guidance-file-input" accept="image/*" style="position:absolute;left:-99999px" />
                 <div class="guidance-btn-bar">
                   <button class="btn btn-push" id="btn-guidance-push">推送指導</button>
                   <button class="btn btn-push-all" id="btn-guidance-reset">重置為原描述</button>
