@@ -94,6 +94,9 @@ export interface RelayExecutionResult {
   returnValue?: string;
   executionTime?: number;
   timestamp: number;
+=======
+  'guidance:update': (data: { description: string }) => void;
+>>>>>>> 30c551f (add teacher guidance push feature with live preview editor)
 }
 
 /** Chat message exchanged between teacher and student. */
@@ -143,4 +146,5 @@ export interface ClientToServerEvents {
   'code:teacher-update': (data: TeacherCodeUpdate) => void;
   'execution:request': (data: ExecutionRelayRequest) => void;
   'execution:relay-result': (data: RelayExecutionResult) => void;
+  'guidance:push': (data: { roomId: string; description: string }) => void;
 }

@@ -958,6 +958,53 @@ body {
   }
 }
 
+/* ---- Guidance Banner ---- */
+
+.guidance-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: var(--code-warning);
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.guidance-banner-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--code-bg-tertiary);
+}
+
+.btn-guidance-restore {
+  background: var(--code-bg-tertiary);
+  color: var(--code-text-primary);
+  border: none;
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.btn-guidance-restore:hover {
+  opacity: 0.85;
+}
+
+[data-theme="light"] .guidance-banner {
+  background: #fef3c7;
+}
+
+[data-theme="light"] .guidance-banner-text {
+  color: #92400e;
+}
+
+[data-theme="light"] .btn-guidance-restore {
+  background: #92400e;
+  color: #fff;
+}
+
 /* Notification toast */
 .lab-notification {
   position: fixed;

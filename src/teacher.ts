@@ -6,6 +6,7 @@
 import './teacher.css';
 import './problem-manager.css';
 import './chat/chat.css';
+import { marked } from 'marked';
 import { io, Socket } from 'socket.io-client';
 import { CodeEditor } from './code-editor';
 import { renderOutput, escapeHtml } from './code-output';
@@ -43,6 +44,11 @@ let isLocked = false;
 let teacherEditor: CodeEditor | null = null;
 let preLockCode: string = '';
 let isExecuting = false;
+
+/* ---- Guidance Editor State ---- */
+let guidanceImageDataUrl: string | null = null;
+let originalAssignedDescription: string = '';
+let guidanceActiveRoomId: string | null = null;
 
 /* ---- Theme ---- */
 
@@ -207,12 +213,52 @@ function renderDashboard(): string {
               <button class="btn btn-push-all" id="btn-push-to-all">推送給所有學生</button>
             </div>
           </div>
-          <div class="monitor-editor" id="monitor-editor"></div>
-          <div id="monitor-tab-bar-container"></div>
-          <div class="monitor-output" id="monitor-output">
-            <div class="output-placeholder">選擇學生後，此處將顯示執行結果</div>
+          <div class="monitor-view-tabs" id="monitor-view-tabs" style="display:none">
+            <button class="monitor-view-tab active" data-view="code">代碼監控</button>
+            <button class="monitor-view-tab" data-view="guidance">指導編輯</button>
           </div>
-          <div id="monitor-chat-container" class="chat-panel hidden"></div>
+          <div class="monitor-view-content" id="monitor-view-code" style="display:none">
+            <div class="monitor-editor" id="monitor-editor"></div>
+            <div id="monitor-tab-bar-container"></div>
+            <div class="monitor-output" id="monitor-output">
+              <div class="output-placeholder">選擇學生後，此處將顯示執行結果</div>
+            </div>
+            <div id="monitor-chat-container" class="chat-panel hidden"></div>
+          </div>
+          <div class="monitor-view-content" id="monitor-view-guidance" style="display:none">
+            <div class="guidance-panel">
+              <div class="guidance-editor-pane">
+                <div class="guidance-pane-label">編輯指導內容 (Markdown)</div>
+                <textarea class="guidance-editor" id="guidance-editor" placeholder="在此編輯指導內容，支援 Markdown 語法...
+
+## 教師提示
+
+請嘗試使用 **雙層迴圈** 來解決這個問題。
+
+1. 第一步：先排序
+2. 第二步：使用雙指針
+
+也可以貼上圖片 (Ctrl+V) 或點擊下方按鈕插入圖片。"></textarea>
+                <div class="guidance-image-preview hidden" id="guidance-image-preview">
+                  <img id="guidance-image-thumb" alt="Preview" />
+                  <span id="guidance-image-label"></span>
+                  <button class="guidance-image-remove" id="guidance-image-remove" title="移除圖片">&times;</button>
+                </div>
+                <input type="file" id="guidance-file-input" accept="image/*" hidden />
+                <div class="guidance-btn-bar">
+                  <button class="btn btn-push" id="btn-guidance-push">推送指導</button>
+                  <button class="btn btn-push-all" id="btn-guidance-reset">重置為原描述</button>
+                  <button class="btn btn-push-all" id="btn-guidance-insert-image">插入圖片</button>
+                </div>
+              </div>
+              <div class="guidance-preview-pane">
+                <div class="guidance-pane-label">即時預覽 (學生視角)</div>
+                <div class="guidance-live-preview" id="guidance-live-preview">
+                  <div class="output-placeholder">在此輸入內容，即時預覽...</div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -374,10 +420,31 @@ function initDashboard(): void {
       `;
     }
 
-    // Show push bar
+    // Show push bar and view tabs
     const pushBar = document.getElementById('monitor-push-bar')!;
     pushBar.style.display = 'flex';
     refreshPushDropdown();
+
+    const viewTabs = document.getElementById('monitor-view-tabs')!;
+    viewTabs.style.display = 'flex';
+
+    // Reset guidance state
+    const guidanceEditor = document.getElementById('guidance-editor') as HTMLTextAreaElement;
+    guidanceEditor.value = '';
+    clearGuidanceImagePreview();
+    originalAssignedDescription = '';
+    guidanceActiveRoomId = roomId;
+    const livePreview = document.getElementById('guidance-live-preview')!;
+    livePreview.innerHTML = '<div class="output-placeholder">在此輸入內容，即時預覽...</div>';
+
+    // Switch to code view by default
+    const codeView = document.getElementById('monitor-view-code')!;
+    const guidanceView = document.getElementById('monitor-view-guidance')!;
+    codeView.style.display = '';
+    guidanceView.style.display = 'none';
+    document.querySelectorAll('.monitor-view-tab').forEach((t) => {
+      t.classList.toggle('active', (t as HTMLElement).dataset.view === 'code');
+    });
 
     if (codeEditor) {
       codeEditor.destroy();
@@ -633,6 +700,176 @@ function initDashboard(): void {
       executionTime: data.executionTime,
       testResults: [],
     });
+  });
+
+  /* ---- View Tab Switching ---- */
+
+  document.querySelectorAll('.monitor-view-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const view = (tab as HTMLElement).dataset.view;
+      const codeView = document.getElementById('monitor-view-code')!;
+      const guidanceView = document.getElementById('monitor-view-guidance')!;
+
+      document.querySelectorAll('.monitor-view-tab').forEach((t) => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      if (view === 'code') {
+        codeView.style.display = '';
+        guidanceView.style.display = 'none';
+      } else {
+        codeView.style.display = 'none';
+        guidanceView.style.display = '';
+      }
+    });
+  });
+
+  /* ---- Guidance Editor ---- */
+
+  // Listen for assigned problem to pre-fill the guidance editor
+  socket?.on('problem:assigned', (data: { problem: AssignedProblem }) => {
+    if (!guidanceActiveRoomId) return;
+    const desc = data.problem.description;
+    originalAssignedDescription = desc;
+    const guidanceEditor = document.getElementById('guidance-editor') as HTMLTextAreaElement;
+    if (guidanceEditor && !guidanceEditor.value.trim()) {
+      guidanceEditor.value = desc;
+      updateGuidancePreview();
+    }
+  });
+
+  // Live preview: update as teacher types
+  function updateGuidancePreview(): void {
+    const editor = document.getElementById('guidance-editor') as HTMLTextAreaElement;
+    const preview = document.getElementById('guidance-live-preview')!;
+    if (!editor || !preview) return;
+
+    const text = editor.value.trim();
+    if (!text) {
+      preview.innerHTML = '<div class="output-placeholder">在此輸入內容，即時預覽...</div>';
+      return;
+    }
+    const dedented = text.replace(/^[ \t]+/gm, '');
+    try {
+      preview.innerHTML = (marked.parse(dedented) as string) || escapeHtml(text);
+    } catch {
+      preview.innerHTML = escapeHtml(text);
+    }
+  }
+
+  const guidanceEditorEl = document.getElementById('guidance-editor') as HTMLTextAreaElement;
+  guidanceEditorEl?.addEventListener('input', updateGuidancePreview);
+
+  // Image handling
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function clearGuidanceImagePreview(): void {
+    guidanceImageDataUrl = null;
+    const preview = document.getElementById('guidance-image-preview')!;
+    preview.classList.add('hidden');
+    const fileInput = document.getElementById('guidance-file-input') as HTMLInputElement;
+    fileInput.value = '';
+  }
+
+  function insertImageIntoEditor(dataUrl: string): void {
+    const editor = document.getElementById('guidance-editor') as HTMLTextAreaElement;
+    if (!editor) return;
+    const markdown = `![image](${dataUrl})`;
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const before = editor.value.substring(0, start);
+    const after = editor.value.substring(end);
+    editor.value = before + markdown + after;
+    editor.selectionStart = editor.selectionEnd = start + markdown.length;
+    editor.focus();
+    updateGuidancePreview();
+  }
+
+  // Insert image button
+  document.getElementById('btn-guidance-insert-image')?.addEventListener('click', () => {
+    document.getElementById('guidance-file-input')?.click();
+  });
+
+  // File input handler
+  document.getElementById('guidance-file-input')?.addEventListener('change', async function (this: HTMLInputElement) {
+    const files = this.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    if (file.size > 2_000_000) {
+      alert('圖片大小不能超過 2MB');
+      this.value = '';
+      return;
+    }
+    try {
+      const dataUrl = await fileToBase64(file);
+      guidanceImageDataUrl = dataUrl;
+      const preview = document.getElementById('guidance-image-preview')!;
+      const thumb = document.getElementById('guidance-image-thumb') as HTMLImageElement;
+      const label = document.getElementById('guidance-image-label')!;
+      thumb.src = dataUrl;
+      label.textContent = file.name;
+      preview.classList.remove('hidden');
+      insertImageIntoEditor(dataUrl);
+      clearGuidanceImagePreview();
+    } catch {
+      alert('讀取圖片失敗');
+    }
+  });
+
+  // Image preview remove button
+  document.getElementById('guidance-image-remove')?.addEventListener('click', () => {
+    clearGuidanceImagePreview();
+  });
+
+  // Paste image support in guidance editor
+  document.getElementById('guidance-editor')?.addEventListener('paste', (e) => {
+    const items = (e as ClipboardEvent).clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        e.preventDefault();
+        const file = items[i].getAsFile();
+        if (file) {
+          if (file.size > 2_000_000) {
+            alert('圖片大小不能超過 2MB');
+            return;
+          }
+          fileToBase64(file).then((dataUrl) => {
+            insertImageIntoEditor(dataUrl);
+          }).catch(() => {
+            alert('讀取圖片失敗');
+          });
+        }
+        return;
+      }
+    }
+  });
+
+  // Push guidance button
+  document.getElementById('btn-guidance-push')?.addEventListener('click', () => {
+    if (!guidanceActiveRoomId) return;
+    const editor = document.getElementById('guidance-editor') as HTMLTextAreaElement;
+    const desc = editor.value;
+    if (!desc.trim()) {
+      alert('指導內容不能為空');
+      return;
+    }
+    socket?.emit('guidance:push', { roomId: guidanceActiveRoomId, description: desc });
+    alert('已推送指導內容給學生');
+  });
+
+  // Reset guidance button
+  document.getElementById('btn-guidance-reset')?.addEventListener('click', () => {
+    const editor = document.getElementById('guidance-editor') as HTMLTextAreaElement;
+    editor.value = originalAssignedDescription;
+    clearGuidanceImagePreview();
+    updateGuidancePreview();
   });
 
   // Logout

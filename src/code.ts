@@ -407,6 +407,9 @@ function switchToProblem(problem: CodeProblem): void {
   const outputPanel = document.getElementById('output-panel');
   if (!problemPanel || !outputPanel) return;
 
+  // Clear any active guidance before switching
+  clearGuidance();
+
   currentProblem = problem;
   problemPanel.innerHTML = renderProblem(problem);
   editor.setCode(problem.starterCode);
@@ -606,6 +609,14 @@ async function initLab(sessionInfo: {
     outputPanel.innerHTML = '<div class="output-placeholder">教師已指派新題目。Press Run to execute.</div>';
     showNotification(`教師已指派新題目：${problem.title}`);
   });
+
+  // Listen for teacher guidance pushes
+  const rawSocketForGuidance = socket.getRawSocket();
+  if (rawSocketForGuidance) {
+    rawSocketForGuidance.on('guidance:update', (data: { description: string }) => {
+      applyGuidance(data.description);
+    });
+  }
 
   // Theme toggle
   updateThemeButton();
@@ -807,6 +818,67 @@ async function initLab(sessionInfo: {
       handleRun();
     }
   });
+}
+
+/* ---- Guidance ---- */
+
+function applyGuidance(description: string): void {
+  const descEl = document.querySelector('.problem-description');
+  if (!descEl) return;
+
+  // Save original HTML if not already saved
+  if (!descEl.hasAttribute('data-guidance-active')) {
+    descEl.setAttribute('data-original-html', descEl.innerHTML);
+    descEl.setAttribute('data-guidance-active', 'true');
+  }
+
+  // Replace with custom description
+  descEl.innerHTML = renderDescription(description);
+
+  // Show guidance banner
+  showGuidanceBanner();
+}
+
+function restoreOriginalDescription(): void {
+  const descEl = document.querySelector('.problem-description');
+  if (!descEl) return;
+  const original = descEl.getAttribute('data-original-html');
+  if (original) {
+    descEl.innerHTML = original;
+    descEl.removeAttribute('data-guidance-active');
+    descEl.removeAttribute('data-original-html');
+  }
+  // Remove banner
+  document.querySelector('.guidance-banner')?.remove();
+}
+
+function showGuidanceBanner(): void {
+  // Remove existing banner if any
+  document.querySelector('.guidance-banner')?.remove();
+
+  const banner = document.createElement('div');
+  banner.className = 'guidance-banner';
+  banner.innerHTML = `
+    <span class="guidance-banner-text">📝 教師指導中</span>
+    <button class="btn-guidance-restore" id="btn-guidance-restore">恢復原題目</button>
+  `;
+
+  const problemPanel = document.getElementById('problem-panel');
+  if (problemPanel) {
+    problemPanel.insertBefore(banner, problemPanel.firstChild);
+  }
+
+  // Wire restore button
+  banner.querySelector('#btn-guidance-restore')?.addEventListener('click', restoreOriginalDescription);
+}
+
+function clearGuidance(): void {
+  const descEl = document.querySelector('.problem-description');
+  if (descEl) {
+    descEl.removeAttribute('data-guidance-active');
+    descEl.removeAttribute('data-original-html');
+  }
+  document.querySelector('.guidance-banner')?.remove();
 }
 
 function showNotification(message: string): void {
