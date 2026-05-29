@@ -14,6 +14,7 @@ interface StudentRecord {
   currentCode: CodeSnapshot | null;
   lastExecution: RemoteExecutionResult | null;
   assignedProblem: AssignedProblem | null;
+  isLocked: boolean;
 }
 
 export class RoomManager {
@@ -30,6 +31,7 @@ export class RoomManager {
       currentCode: null,
       lastExecution: null,
       assignedProblem: null,
+      isLocked: false,
     };
     this.studentsBySocket.set(socketId, record);
     return record;
@@ -77,6 +79,24 @@ export class RoomManager {
 
   getAssignedProblem(socketId: string): AssignedProblem | null {
     return this.studentsBySocket.get(socketId)?.assignedProblem ?? null;
+  }
+
+  lockStudent(socketId: string): boolean {
+    const record = this.studentsBySocket.get(socketId);
+    if (!record) return false;
+    record.isLocked = true;
+    return true;
+  }
+
+  unlockStudent(socketId: string): boolean {
+    const record = this.studentsBySocket.get(socketId);
+    if (!record) return false;
+    record.isLocked = false;
+    return true;
+  }
+
+  isStudentLocked(socketId: string): boolean {
+    return this.studentsBySocket.get(socketId)?.isLocked ?? false;
   }
 
   getRoster(): RosterEntry[] {

@@ -59,6 +59,41 @@ export interface ServerToClientEvents {
   'problem:assigned': (data: { problem: AssignedProblem }) => void;
   'chat:message': (msg: ChatMessage) => void;
   'chat:history': (data: { roomId: string; messages: ChatMessage[] }) => void;
+  'editor:locked': (data: LockState) => void;
+  'editor:unlocked': (data: LockState) => void;
+  'code:teacher-broadcast': (data: TeacherCodeUpdate) => void;
+  'execution:relay': (data: ExecutionRelayRequest) => void;
+  'execution:relay-broadcast': (data: RelayExecutionResult) => void;
+}
+
+/** Lock state for teacher lock-and-push workflow. */
+export interface LockState {
+  roomId: string;
+  isLocked: boolean;
+}
+
+/** Teacher code update relayed to student during lock. */
+export interface TeacherCodeUpdate {
+  roomId: string;
+  code: string;
+  timestamp: number;
+}
+
+/** Teacher requests execution relay through student's Pyodide. */
+export interface ExecutionRelayRequest {
+  roomId: string;
+  code: string;
+}
+
+/** Student's relayed execution result sent back to teacher. */
+export interface RelayExecutionResult {
+  roomId: string;
+  status: string;
+  stdout: string;
+  stderr: string;
+  returnValue?: string;
+  executionTime?: number;
+  timestamp: number;
 }
 
 /** Chat message exchanged between teacher and student. */
@@ -103,4 +138,9 @@ export interface ClientToServerEvents {
   'problem:push': (data: { roomId: string; problem: AssignedProblem }) => void;
   'problem:push-all': (data: { problem: AssignedProblem }) => void;
   'chat:send': (data: { roomId: string; sender: 'student' | 'teacher'; text?: string; imageUrl?: string }) => void;
+  'editor:lock': (data: { roomId: string }) => void;
+  'editor:unlock': (data: { roomId: string }) => void;
+  'code:teacher-update': (data: TeacherCodeUpdate) => void;
+  'execution:request': (data: ExecutionRelayRequest) => void;
+  'execution:relay-result': (data: RelayExecutionResult) => void;
 }

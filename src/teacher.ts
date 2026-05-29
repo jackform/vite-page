@@ -18,6 +18,8 @@ import type {
   RemoteExecutionResult,
   AssignedProblem,
   ChatMessage,
+  TeacherCodeUpdate,
+  RelayExecutionResult,
   ServerToClientEvents,
   ClientToServerEvents,
 } from '../shared/types';
@@ -35,6 +37,12 @@ let currentTab: 'monitor' | 'problems' = 'monitor';
 let problemManager: ProblemManager | null = null;
 let chatClient: ChatClient | null = null;
 let activeMonitorTab: 'output' | 'chat' = 'output';
+
+// Lock & push state
+let isLocked = false;
+let teacherEditor: CodeEditor | null = null;
+let preLockCode: string = '';
+let isExecuting = false;
 
 /* ---- Theme ---- */
 
@@ -184,11 +192,20 @@ function renderDashboard(): string {
             <span class="monitor-placeholder">請選擇一名學生查看代碼</span>
           </div>
           <div class="monitor-push-bar" id="monitor-push-bar" style="display:none">
-            <select id="push-problem-select" class="push-select">
-              <option value="">選擇要推送的題目...</option>
-            </select>
-            <button class="btn btn-push" id="btn-push-to-student">推送給此學生</button>
-            <button class="btn btn-push-all" id="btn-push-to-all">推送給所有學生</button>
+            <div class="push-bar-row">
+              <button class="btn btn-lock" id="btn-lock-toggle" title="鎖定編輯">🔒 鎖定編輯</button>
+              <button class="btn btn-run-locked hidden" id="btn-run-locked" title="在學生端執行代碼">▶ Run</button>
+              <button class="btn btn-unlock-push hidden" id="btn-unlock-push" title="推送代碼並解鎖">推送並解鎖</button>
+              <button class="btn btn-unlock-cancel hidden" id="btn-unlock-cancel" title="取消並恢復原始代碼">取消</button>
+              <span class="push-divider"></span>
+            </div>
+            <div class="push-bar-row">
+              <select id="push-problem-select" class="push-select">
+                <option value="">選擇要推送的題目...</option>
+              </select>
+              <button class="btn btn-push" id="btn-push-to-student">推送給此學生</button>
+              <button class="btn btn-push-all" id="btn-push-to-all">推送給所有學生</button>
+            </div>
           </div>
           <div class="monitor-editor" id="monitor-editor"></div>
           <div id="monitor-tab-bar-container"></div>
@@ -317,6 +334,28 @@ function initDashboard(): void {
   }
 
   function selectStudent(roomId: string): void {
+    // Auto-unlock previous student if locked
+    if (selectedRoomId && isLocked) {
+      // Cancel lock on previous student
+      if (preLockCode) {
+        socket?.emit('code:teacher-update', {
+          roomId: selectedRoomId,
+          code: preLockCode,
+          timestamp: Date.now(),
+        });
+      }
+      socket?.emit('editor:unlock', { roomId: selectedRoomId });
+      isLocked = false;
+      isExecuting = false;
+      setLockButtonsVisible(false);
+      btnRunLocked.disabled = false;
+      btnRunLocked.textContent = '▶ Run';
+      if (teacherEditor) {
+        teacherEditor.destroy();
+        teacherEditor = null;
+      }
+    }
+
     if (selectedRoomId) {
       socket?.emit('room:unsubscribe', { roomId: selectedRoomId });
     }
@@ -343,6 +382,10 @@ function initDashboard(): void {
     if (codeEditor) {
       codeEditor.destroy();
       codeEditor = null;
+    }
+    if (teacherEditor) {
+      teacherEditor.destroy();
+      teacherEditor = null;
     }
     monitorEditor.innerHTML = '<div class="output-placeholder">等待代碼同步...</div>';
     monitorOutput.innerHTML = '<div class="output-placeholder">等待執行結果...</div>';
@@ -403,6 +446,158 @@ function initDashboard(): void {
     alert(`已推送「${problem.title}」給所有學生`);
   });
 
+  // ---- Lock & Push Button Handlers ----
+
+  const btnLockToggle = document.getElementById('btn-lock-toggle')! as HTMLButtonElement;
+  const btnRunLocked = document.getElementById('btn-run-locked')! as HTMLButtonElement;
+  const btnUnlockPush = document.getElementById('btn-unlock-push')! as HTMLButtonElement;
+  const btnUnlockCancel = document.getElementById('btn-unlock-cancel')! as HTMLButtonElement;
+
+  function setLockButtonsVisible(locked: boolean): void {
+    btnLockToggle.textContent = locked ? '🔓 解鎖' : '🔒 鎖定編輯';
+    btnLockToggle.classList.toggle('btn-locked-active', locked);
+    btnRunLocked.classList.toggle('hidden', !locked);
+    btnUnlockPush.classList.toggle('hidden', !locked);
+    btnUnlockCancel.classList.toggle('hidden', !locked);
+    // Hide problem push buttons when locked
+    const pushRow = document.querySelector('.push-bar-row:nth-child(2)') as HTMLElement;
+    if (pushRow) pushRow.style.display = locked ? 'none' : 'flex';
+  }
+
+  btnLockToggle.addEventListener('click', () => {
+    if (!selectedRoomId) return;
+
+    if (!isLocked) {
+      // Lock: store pre-lock code and emit lock event
+      preLockCode = codeEditor?.getCode() || '';
+      socket?.emit('editor:lock', { roomId: selectedRoomId });
+    } else {
+      // Unlock without pushing (same as cancel)
+      if (teacherEditor && preLockCode) {
+        socket?.emit('code:teacher-update', {
+          roomId: selectedRoomId,
+          code: preLockCode,
+          timestamp: Date.now(),
+        });
+      }
+      setTimeout(() => {
+        socket?.emit('editor:unlock', { roomId: selectedRoomId! });
+      }, 200);
+    }
+  });
+
+  btnRunLocked.addEventListener('click', () => {
+    if (!selectedRoomId || !teacherEditor) return;
+    if (isExecuting) return;
+    isExecuting = true;
+    btnRunLocked.disabled = true;
+    btnRunLocked.textContent = '⏳ Running...';
+
+    const code = teacherEditor.getCode();
+    socket?.emit('code:teacher-update', {
+      roomId: selectedRoomId,
+      code,
+      timestamp: Date.now(),
+    });
+    socket?.emit('execution:request', { roomId: selectedRoomId, code });
+  });
+
+  btnUnlockPush.addEventListener('click', () => {
+    if (!selectedRoomId || !teacherEditor) return;
+
+    const code = teacherEditor.getCode();
+    socket?.emit('code:teacher-update', {
+      roomId: selectedRoomId,
+      code,
+      timestamp: Date.now(),
+    });
+    setTimeout(() => {
+      socket?.emit('editor:unlock', { roomId: selectedRoomId! });
+    }, 200);
+  });
+
+  btnUnlockCancel.addEventListener('click', () => {
+    if (!selectedRoomId) return;
+
+    if (preLockCode) {
+      socket?.emit('code:teacher-update', {
+        roomId: selectedRoomId,
+        code: preLockCode,
+        timestamp: Date.now(),
+      });
+    }
+    setTimeout(() => {
+      socket?.emit('editor:unlock', { roomId: selectedRoomId! });
+    }, 200);
+  });
+
+  // ---- Lock & Push Socket Listeners ----
+
+  socket?.on('editor:locked', (data) => {
+    if (data.roomId !== selectedRoomId) return;
+    isLocked = true;
+    setLockButtonsVisible(true);
+
+    // Replace read-only editor with editable teacher editor
+    if (codeEditor) {
+      preLockCode = codeEditor.getCode();
+      codeEditor.destroy();
+      codeEditor = null;
+    }
+
+    const code = preLockCode || '';
+    monitorEditor.innerHTML = '';
+    teacherEditor = new CodeEditor(monitorEditor, code, false, isLightTheme());
+
+    teacherEditor.onChange((newCode) => {
+      if (!selectedRoomId) return;
+      socket?.emit('code:teacher-update', {
+        roomId: selectedRoomId,
+        code: newCode,
+        timestamp: Date.now(),
+      });
+    });
+  });
+
+  socket?.on('editor:unlocked', (data) => {
+    if (data.roomId !== selectedRoomId) return;
+    isLocked = false;
+    isExecuting = false;
+    setLockButtonsVisible(false);
+    btnRunLocked.disabled = false;
+    btnRunLocked.textContent = '▶ Run';
+
+    // Replace editable teacher editor with read-only viewer
+    if (teacherEditor) {
+      teacherEditor.destroy();
+      teacherEditor = null;
+    }
+
+    monitorEditor.innerHTML = '<div class="output-placeholder">等待代碼同步...</div>';
+
+    // If we had code before, recreate the read-only editor
+    const entry = rosterEntries.find((e) => e.roomId === selectedRoomId);
+    if (entry && socket) {
+      // The next code:broadcast will recreate the read-only editor
+    }
+  });
+
+  // Relay execution result from student
+  socket?.on('execution:relay-broadcast', (data: RelayExecutionResult) => {
+    if (data.roomId !== selectedRoomId) return;
+    isExecuting = false;
+    btnRunLocked.disabled = false;
+    btnRunLocked.textContent = '▶ Run';
+
+    monitorOutput.innerHTML = renderOutput({
+      status: data.status as any,
+      stdout: data.stdout,
+      stderr: data.stderr,
+      returnValue: data.returnValue,
+      executionTime: data.executionTime,
+    });
+  });
+
   // Roster events
   socket?.on('roster:update', (data) => {
     rosterEntries = data.students;
@@ -412,6 +607,9 @@ function initDashboard(): void {
   // Code broadcast
   socket?.on('code:broadcast', (data) => {
     if (data.roomId !== selectedRoomId) return;
+
+    // When locked, teacher owns the code — skip student broadcasts
+    if (isLocked) return;
 
     if (!codeEditor) {
       monitorEditor.innerHTML = '';
@@ -439,6 +637,16 @@ function initDashboard(): void {
 
   // Logout
   btnLogout.addEventListener('click', () => {
+    // Auto-unlock if currently locked
+    if (selectedRoomId && isLocked && preLockCode) {
+      socket?.emit('code:teacher-update', {
+        roomId: selectedRoomId,
+        code: preLockCode,
+        timestamp: Date.now(),
+      });
+      socket?.emit('editor:unlock', { roomId: selectedRoomId });
+    }
+
     problemManager?.destroy();
     problemManager = null;
     chatClient?.destroy();
@@ -449,6 +657,10 @@ function initDashboard(): void {
     selectedRoomId = null;
     codeEditor?.destroy();
     codeEditor = null;
+    teacherEditor?.destroy();
+    teacherEditor = null;
+    isLocked = false;
+    isExecuting = false;
     rosterEntries = [];
     initAuth();
   });
@@ -457,6 +669,18 @@ function initDashboard(): void {
   socket?.io.on('reconnect', () => {
     socket?.emit('teacher:auth', { password });
     if (selectedRoomId) {
+      // On reconnect, reset lock state (server will have auto-unlocked)
+      isLocked = false;
+      isExecuting = false;
+      setLockButtonsVisible(false);
+      btnRunLocked.disabled = false;
+      btnRunLocked.textContent = '▶ Run';
+      if (teacherEditor) {
+        teacherEditor.destroy();
+        teacherEditor = null;
+      }
+      monitorEditor.innerHTML = '<div class="output-placeholder">等待代碼同步...</div>';
+
       socket?.emit('room:subscribe', { roomId: selectedRoomId });
     }
   });
