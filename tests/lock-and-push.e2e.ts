@@ -17,7 +17,7 @@ test.describe('Lock & Push E2E', () => {
   test('teacher locks student editor', async ({ page, context }) => {
     // --- Student page ---
     const studentPage = await context.newPage();
-    await studentPage.goto('/code.html');
+    await studentPage.goto('/vite-page/code.html');
     await studentPage.fill('#reg-name', 'Alice');
     await studentPage.fill('#reg-student-id', 'S100');
     await studentPage.click('#reg-submit');
@@ -25,8 +25,8 @@ test.describe('Lock & Push E2E', () => {
 
     // --- Teacher page ---
     const teacherPage = await context.newPage();
-    await teacherPage.goto('/teacher.html');
-    await teacherPage.fill('#auth-password', '');
+    await teacherPage.goto('/vite-page/teacher.html');
+    await teacherPage.fill('#auth-password', 'test');
     await teacherPage.click('#auth-submit');
     await teacherPage.waitForSelector('.teacher-layout', { timeout: 10000 });
 
@@ -35,12 +35,12 @@ test.describe('Lock & Push E2E', () => {
     await expect(aliceItem).toBeVisible({ timeout: 5000 });
     await aliceItem.click();
 
-    // Wait for code to sync
-    await teacherPage.waitForSelector(EDITOR_SELECTOR, { timeout: 5000 });
+    // Wait for code view toolbar to appear (editor may need code:broadcast which
+    // requires the student to have typed code first; lock button is always visible)
+    await teacherPage.waitForSelector('#btn-lock-toggle', { timeout: 10000 });
 
     // Click lock button
     const lockBtn = teacherPage.locator('#btn-lock-toggle');
-    await expect(lockBtn).toBeVisible();
     await lockBtn.click();
 
     // Verify student sees lock overlay
@@ -60,7 +60,7 @@ test.describe('Lock & Push E2E', () => {
   test('teacher cancels lock and restores student code', async ({ page, context }) => {
     // --- Student page ---
     const studentPage = await context.newPage();
-    await studentPage.goto('/code.html');
+    await studentPage.goto('/vite-page/code.html');
     await studentPage.fill('#reg-name', 'Bob');
     await studentPage.fill('#reg-student-id', 'S101');
     await studentPage.click('#reg-submit');
@@ -68,8 +68,8 @@ test.describe('Lock & Push E2E', () => {
 
     // --- Teacher page ---
     const teacherPage = await context.newPage();
-    await teacherPage.goto('/teacher.html');
-    await teacherPage.fill('#auth-password', '');
+    await teacherPage.goto('/vite-page/teacher.html');
+    await teacherPage.fill('#auth-password', 'test');
     await teacherPage.click('#auth-submit');
     await teacherPage.waitForSelector('.teacher-layout', { timeout: 10000 });
 
@@ -77,7 +77,7 @@ test.describe('Lock & Push E2E', () => {
     const bobItem = teacherPage.locator('.roster-item').filter({ hasText: 'Bob' });
     await expect(bobItem).toBeVisible({ timeout: 5000 });
     await bobItem.click();
-    await teacherPage.waitForSelector(EDITOR_SELECTOR, { timeout: 5000 });
+    await teacherPage.waitForSelector('#btn-lock-toggle', { timeout: 10000 });
 
     // Lock
     await teacherPage.locator('#btn-lock-toggle').click();
@@ -96,7 +96,7 @@ test.describe('Lock & Push E2E', () => {
   test('student cannot edit while locked', async ({ page, context }) => {
     // --- Student page ---
     const studentPage = await context.newPage();
-    await studentPage.goto('/code.html');
+    await studentPage.goto('/vite-page/code.html');
     await studentPage.fill('#reg-name', 'Carol');
     await studentPage.fill('#reg-student-id', 'S102');
     await studentPage.click('#reg-submit');
@@ -104,8 +104,8 @@ test.describe('Lock & Push E2E', () => {
 
     // --- Teacher page ---
     const teacherPage = await context.newPage();
-    await teacherPage.goto('/teacher.html');
-    await teacherPage.fill('#auth-password', '');
+    await teacherPage.goto('/vite-page/teacher.html');
+    await teacherPage.fill('#auth-password', 'test');
     await teacherPage.click('#auth-submit');
     await teacherPage.waitForSelector('.teacher-layout', { timeout: 10000 });
 
@@ -113,7 +113,7 @@ test.describe('Lock & Push E2E', () => {
     const carolItem = teacherPage.locator('.roster-item').filter({ hasText: 'Carol' });
     await expect(carolItem).toBeVisible({ timeout: 5000 });
     await carolItem.click();
-    await teacherPage.waitForSelector(EDITOR_SELECTOR, { timeout: 5000 });
+    await teacherPage.waitForSelector('#btn-lock-toggle', { timeout: 10000 });
 
     // Lock
     await teacherPage.locator('#btn-lock-toggle').click();

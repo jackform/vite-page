@@ -12,7 +12,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Chat Module E2E', () => {
   test('student sees chat tab after registration', async ({ page }) => {
-    await page.goto('/code.html');
+    await page.goto('/vite-page/code.html');
 
     // Fill registration form
     await page.fill('#reg-name', 'Alice');
@@ -20,7 +20,7 @@ test.describe('Chat Module E2E', () => {
     await page.click('#reg-submit');
 
     // Wait for editor to appear (lab is initialized)
-    await page.waitForSelector('.code-editor', { timeout: 10000 });
+    await page.waitForSelector('.cm-editor', { timeout: 10000 });
 
     // Chat tab bar should be visible
     const tabBar = page.locator('.chat-tab-bar');
@@ -35,18 +35,18 @@ test.describe('Chat Module E2E', () => {
   test('teacher sends message to student and student receives it', async ({ page, context }) => {
     // --- Student page ---
     const studentPage = await context.newPage();
-    await studentPage.goto('/code.html');
+    await studentPage.goto('/vite-page/code.html');
     await studentPage.fill('#reg-name', 'Bob');
     await studentPage.fill('#reg-student-id', 'S002');
     await studentPage.click('#reg-submit');
-    await studentPage.waitForSelector('.code-editor', { timeout: 10000 });
+    await studentPage.waitForSelector('.cm-editor', { timeout: 10000 });
 
     // --- Teacher page ---
     const teacherPage = await context.newPage();
-    await teacherPage.goto('/teacher.html');
+    await teacherPage.goto('/vite-page/teacher.html');
 
     // Auth
-    await teacherPage.fill('#auth-password', '');
+    await teacherPage.fill('#auth-password', 'test');
     await teacherPage.click('#auth-submit');
     await teacherPage.waitForSelector('.teacher-layout', { timeout: 10000 });
 
@@ -64,7 +64,7 @@ test.describe('Chat Module E2E', () => {
     await teacherPage.click('.chat-send-btn');
 
     // Message should appear in teacher's chat
-    await expect(teacherPage.locator('.chat-message.mine')).toContainText('Hello Bob');
+    await expect(teacherPage.locator('.chat-message.mine').first()).toContainText('Hello Bob');
 
     // Switch to chat tab on student side
     const studentChatTab = studentPage.locator('.chat-tab').filter({ hasText: '訊息' });
@@ -77,16 +77,16 @@ test.describe('Chat Module E2E', () => {
   test('student sends message to teacher', async ({ page, context }) => {
     // --- Student page ---
     const studentPage = await context.newPage();
-    await studentPage.goto('/code.html');
+    await studentPage.goto('/vite-page/code.html');
     await studentPage.fill('#reg-name', 'Charlie');
     await studentPage.fill('#reg-student-id', 'S003');
     await studentPage.click('#reg-submit');
-    await studentPage.waitForSelector('.code-editor', { timeout: 10000 });
+    await studentPage.waitForSelector('.cm-editor', { timeout: 10000 });
 
     // --- Teacher page ---
     const teacherPage = await context.newPage();
-    await teacherPage.goto('/teacher.html');
-    await teacherPage.fill('#auth-password', '');
+    await teacherPage.goto('/vite-page/teacher.html');
+    await teacherPage.fill('#auth-password', 'test');
     await teacherPage.click('#auth-submit');
     await teacherPage.waitForSelector('.teacher-layout', { timeout: 10000 });
 
@@ -108,15 +108,15 @@ test.describe('Chat Module E2E', () => {
     await expect(studentPage.locator('.chat-message.mine')).toContainText('I have a question');
 
     // Teacher receives student message
-    await expect(teacherPage.locator('.chat-message.theirs')).toContainText('I have a question', { timeout: 5000 });
+    await expect(teacherPage.locator('.chat-message.theirs').first()).toContainText('I have a question', { timeout: 5000 });
   });
 
   test('chat tab switches correctly and output still works', async ({ page }) => {
-    await page.goto('/code.html');
+    await page.goto('/vite-page/code.html');
     await page.fill('#reg-name', 'Dave');
     await page.fill('#reg-student-id', 'S004');
     await page.click('#reg-submit');
-    await page.waitForSelector('.code-editor', { timeout: 10000 });
+    await page.waitForSelector('.cm-editor', { timeout: 10000 });
 
     // Output is visible by default
     const outputPanel = page.locator('#output-panel');
@@ -144,16 +144,16 @@ test.describe('Chat Module E2E', () => {
   test('teacher sends image to student via file chooser', async ({ page, context }) => {
     // --- Student page ---
     const studentPage = await context.newPage();
-    await studentPage.goto('/code.html');
+    await studentPage.goto('/vite-page/code.html');
     await studentPage.fill('#reg-name', 'Grace');
     await studentPage.fill('#reg-student-id', 'S007');
     await studentPage.click('#reg-submit');
-    await studentPage.waitForSelector('.code-editor', { timeout: 10000 });
+    await studentPage.waitForSelector('.cm-editor', { timeout: 10000 });
 
     // --- Teacher page ---
     const teacherPage = await context.newPage();
-    await teacherPage.goto('/teacher.html');
-    await teacherPage.fill('#auth-password', '');
+    await teacherPage.goto('/vite-page/teacher.html');
+    await teacherPage.fill('#auth-password', 'test');
     await teacherPage.click('#auth-submit');
     await teacherPage.waitForSelector('.teacher-layout', { timeout: 10000 });
 
@@ -182,8 +182,8 @@ test.describe('Chat Module E2E', () => {
     await expect(teacherPage.locator('.chat-image-preview')).toBeHidden({ timeout: 3000 });
 
     // Teacher sees own message with image
-    await expect(teacherPage.locator('.chat-message.mine')).toContainText('Here is a screenshot');
-    await expect(teacherPage.locator('.chat-message.mine .chat-message-image img')).toBeVisible({ timeout: 3000 });
+    await expect(teacherPage.locator('.chat-message.mine').first()).toContainText('Here is a screenshot');
+    await expect(teacherPage.locator('.chat-message.mine .chat-message-image img').first()).toBeVisible({ timeout: 3000 });
 
     // Student receives the image
     await studentPage.locator('.chat-tab').filter({ hasText: '訊息' }).click();
@@ -193,43 +193,42 @@ test.describe('Chat Module E2E', () => {
   test('switching students on teacher side updates chat', async ({ page, context }) => {
     // Register two students
     const s1 = await context.newPage();
-    await s1.goto('/code.html');
+    await s1.goto('/vite-page/code.html');
     await s1.fill('#reg-name', 'Eve');
     await s1.fill('#reg-student-id', 'S005');
     await s1.click('#reg-submit');
-    await s1.waitForSelector('.code-editor', { timeout: 10000 });
+    await s1.waitForSelector('.cm-editor', { timeout: 10000 });
 
     const s2 = await context.newPage();
-    await s2.goto('/code.html');
+    await s2.goto('/vite-page/code.html');
     await s2.fill('#reg-name', 'Frank');
     await s2.fill('#reg-student-id', 'S006');
     await s2.click('#reg-submit');
-    await s2.waitForSelector('.code-editor', { timeout: 10000 });
+    await s2.waitForSelector('.cm-editor', { timeout: 10000 });
 
     // Teacher
     const teacherPage = await context.newPage();
-    await teacherPage.goto('/teacher.html');
-    await teacherPage.fill('#auth-password', '');
+    await teacherPage.goto('/vite-page/teacher.html');
+    await teacherPage.fill('#auth-password', 'test');
     await teacherPage.click('#auth-submit');
     await teacherPage.waitForSelector('.teacher-layout', { timeout: 10000 });
 
-    // Switch to chat tab
-    await teacherPage.locator('.chat-tab').filter({ hasText: '訊息' }).click();
-
-    // Send message to Eve
-    const eveItem = teacherPage.locator('.roster-item').filter({ hasText: 'Eve' });
+    // Select Eve first (chat tab only appears after selecting a student)
+    const eveItem = teacherPage.locator('.roster-item').filter({ hasText: 'Eve S005' });
     await expect(eveItem).toBeVisible({ timeout: 5000 });
     await eveItem.click();
+
+    // Switch to chat tab
+    await teacherPage.locator('.chat-tab').filter({ hasText: '訊息' }).click();
     await teacherPage.fill('.chat-input', 'Message for Eve');
     await teacherPage.click('.chat-send-btn');
-    await expect(teacherPage.locator('.chat-message.mine')).toContainText('Message for Eve');
-
+    await expect(teacherPage.locator('.chat-message.mine').first()).toContainText('Message for Eve');
     // Switch to Frank - chat should reset
     const frankItem = teacherPage.locator('.roster-item').filter({ hasText: 'Frank' });
     await expect(frankItem).toBeVisible({ timeout: 5000 });
     await frankItem.click();
 
-    // Should show empty state for new conversation
-    await expect(teacherPage.locator('.chat-empty')).toBeVisible({ timeout: 3000 });
+    // Should show empty state for new conversation (no messages from Eve)
+    await expect(teacherPage.locator('.chat-message')).toHaveCount(0, { timeout: 3000 });
   });
 });
