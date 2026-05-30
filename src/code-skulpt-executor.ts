@@ -1,5 +1,6 @@
 import Sk from 'skulpt';
 import type { ExecutionResult, TestCase, TestRunResult, ExecutionStatus } from './code-types';
+import { extractFunctionName, buildTestHarness, parseTestOutput } from './code-test-utils.js';
 
 /**
  * Skulpt-based Python executor.
@@ -149,7 +150,7 @@ export class SkulptExecutor {
    * Run test cases — builds the same test harness pattern as the Pyodide executor.
    */
   async runTests(code: string, testCases: TestCase[], timeoutMs = 30000): Promise<TestRunResult> {
-    const functionName = this.extractFunctionName(code);
+    const functionName = extractFunctionName(code);
     if (!functionName) {
       return {
         status: 'error',
@@ -160,11 +161,11 @@ export class SkulptExecutor {
       };
     }
 
-    const testCode = this.buildTestHarness(code, functionName, testCases);
+    const testCode = buildTestHarness(code, functionName, testCases);
     const result = await this.execute(testCode, timeoutMs);
 
     if (result.status === 'success') {
-      return this.parseTestOutput(result, testCases);
+      return parseTestOutput(result, testCases);
     }
 
     return { ...result, testResults: [] };
@@ -208,100 +209,5 @@ export class SkulptExecutor {
   private setStatus(status: ExecutionStatus): void {
     this.status = status;
     this.statusChangeHandlers.forEach((h) => h(status));
-  }
-
-  private extractFunctionName(code: string): string | null {
-    const match = code.match(/^\s*def\s+(\w+)\s*\(/m);
-    return match ? match[1] : null;
-  }
-
-  private buildTestHarness(userCode: string, functionName: string, testCases: TestCase[]): string {
-    const lines: string[] = [];
-
-    lines.push('import json');
-    lines.push('');
-    lines.push('# User code');
-    lines.push(userCode);
-    lines.push('');
-    lines.push('# Test runner');
-    lines.push('_test_cases = ' + JSON.stringify(testCases.map((tc) => [tc.input, tc.expected])));
-    lines.push('_fn = ' + functionName);
-    lines.push('');
-    lines.push('for _idx, (_input, _expected) in enumerate(_test_cases):');
-    lines.push('    try:');
-    lines.push('        # Parse input (split by newline, each line is a Python literal)');
-    lines.push('        _args = []');
-    lines.push('        for _line in _input.strip().split("\\n"):');
-    lines.push('            _line = _line.strip()');
-    lines.push('            if _line:');
-    lines.push('                _args.append(eval(_line))');
-    lines.push('');
-    lines.push('        # Call the user function');
-    lines.push('        if len(_args) == 1:');
-    lines.push('            _actual = _fn(_args[0])');
-    lines.push('        else:');
-    lines.push('            _actual = _fn(*_args)');
-    lines.push('');
-    lines.push('        # Print result as a JSON line (marker: TEST_RESULT)');
-    lines.push('        print("TEST_RESULT:" + json.dumps({');
-    lines.push('            "index": _idx,');
-    lines.push('            "passed": str(_actual) == str(_expected),');
-    lines.push('            "input": _input,');
-    lines.push('            "expected": _expected,');
-    lines.push('            "actual": str(_actual)');
-    lines.push('        }))');
-    lines.push('    except Exception as _e:');
-    lines.push('        print("TEST_RESULT:" + json.dumps({');
-    lines.push('            "index": _idx,');
-    lines.push('            "passed": False,');
-    lines.push('            "input": _input,');
-    lines.push('            "expected": _expected,');
-    lines.push('            "actual": "Error: " + str(_e)');
-    lines.push('        }))');
-
-    return lines.join('\n');
-  }
-
-  private parseTestOutput(result: ExecutionResult, testCases: TestCase[]): TestRunResult {
-    const testResults = [];
-    let passedCount = 0;
-
-    for (const line of result.stdout.split('\n')) {
-      if (line.startsWith('TEST_RESULT:')) {
-        try {
-          const data = JSON.parse(line.slice('TEST_RESULT:'.length));
-          testResults.push({
-            passed: data.passed,
-            input: data.input,
-            expected: data.expected,
-            actual: data.actual,
-            index: data.index,
-          });
-          if (data.passed) passedCount++;
-        } catch {
-          // Malformed test result line — skip
-        }
-      }
-    }
-
-    if (testResults.length === 0) {
-      const trimmed = result.stdout.trim();
-      for (let i = 0; i < testCases.length; i++) {
-        testResults.push({
-          passed: false,
-          input: testCases[i].input,
-          expected: testCases[i].expected,
-          actual: trimmed || '(no output)',
-          index: i,
-        });
-      }
-    }
-
-    return {
-      ...result,
-      testResults,
-      passedCount,
-      totalCount: testCases.length,
-    };
   }
 }
