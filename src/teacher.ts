@@ -322,6 +322,7 @@ function initDashboard(): void {
   function resetChatForRoom(roomId: string): void {
     chatClient?.destroy();
     (chatPanel as any).resetInput?.();
+    clearChat(messagesContainer);
     if (!socket) return;
 
     chatClient = new ChatClient(socket, roomId, 'teacher');
