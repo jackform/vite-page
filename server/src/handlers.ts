@@ -23,8 +23,8 @@ export function registerHandlers(
 ): void {
   // ---- Student Events ----
 
-  socket.on('student:register', (identity: StudentIdentity) => {
-    const { name, studentId } = identity;
+  socket.on('student:join', (data: { studentId: string; name: string }) => {
+    const { name, studentId } = data;
 
     if (!name || !name.trim()) {
       socket.emit('register:error', { error: 'Name is required' });
@@ -33,6 +33,16 @@ export function registerHandlers(
     if (!studentId || !studentId.trim()) {
       socket.emit('register:error', { error: 'Student ID is required' });
       return;
+    }
+
+    // Kick old connection if same studentId is already connected
+    const existingSocketId = roomManager.getSocketByStudentId(studentId.trim());
+    if (existingSocketId && existingSocketId !== socket.id) {
+      const existingSocket = io.sockets.sockets.get(existingSocketId);
+      if (existingSocket) {
+        existingSocket.emit('kicked', { reason: 'Your account was logged in from another device.' });
+        existingSocket.disconnect(true);
+      }
     }
 
     const record = roomManager.addStudent(socket.id, studentId.trim(), name.trim());

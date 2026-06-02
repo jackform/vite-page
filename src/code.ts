@@ -36,6 +36,8 @@ let editor: CodeEditor;
 let executor: CodeExecutor | SkulptExecutor | CodeWidgetExecutor;
 let session: CodeSession;
 let socket: CodeSocket;
+let currentStudentName = '';
+let currentStudentId = '';
 /** All available problems loaded from server (or fallback). */
 let problemsById: Record<string, CodeProblem> = {};
 /** Ordered list of problem ids for cycling. */
@@ -92,10 +94,14 @@ function renderLayout(): string {
     <nav class="code-nav">
       <a href="./">← 返回個人主頁</a>
       <span class="code-nav-title">Python 程式設計實驗室</span>
-      <button class="btn-theme-toggle" id="btn-theme-toggle" title="切換主題">☀</button>
-      <div class="conn-status">
-        <span class="status-dot" id="conn-dot"></span>
-        <span id="conn-text">Connected</span>
+      <div class="code-nav-right">
+        <span class="code-nav-user" id="nav-user-name"></span>
+        <button class="btn-logout" id="btn-logout" title="退出">退出</button>
+        <button class="btn-theme-toggle" id="btn-theme-toggle" title="切換主題">☀</button>
+        <div class="conn-status">
+          <span class="status-dot" id="conn-dot"></span>
+          <span id="conn-text">Connected</span>
+        </div>
       </div>
     </nav>
     <div class="code-layout" id="code-layout">
@@ -140,25 +146,162 @@ function renderLayout(): string {
   `;
 }
 
-function renderRegistrationForm(): string {
+/* ---- Step 1: Student ID Entry ---- */
+
+function renderStudentIdStep(): string {
   return `
     <div class="registration-overlay">
       <div class="registration-card">
         <h1>Python 程式設計實驗室</h1>
-        <p class="registration-subtitle">請輸入你的資料以加入課堂</p>
-        <form id="reg-form">
+        <p class="registration-subtitle">請輸入學生編號</p>
+        <form id="student-id-form">
+          <label class="reg-label">
+            <span>學生編號 Student ID</span>
+            <input type="text" id="student-id-input" class="reg-input" placeholder="20240001" required autocomplete="off" />
+          </label>
+          <button type="submit" class="btn btn-run" id="btn-continue">繼續</button>
+        </form>
+        <div id="reg-error" class="reg-error hidden"></div>
+        <div id="reg-loading" class="reg-loading hidden">正在查詢...</div>
+      </div>
+    </div>
+  `;
+}
+
+/* ---- Step 2a: Login (existing student) ---- */
+
+function renderLoginStep(name: string): string {
+  return `
+    <div class="registration-overlay">
+      <div class="registration-card">
+        <h1>歡迎回來!</h1>
+        <p class="registration-subtitle">${escapeHtml(name)}</p>
+        <form id="login-form">
+          <label class="reg-label">
+            <span>請輸入 4 位數字 PIN</span>
+            <input type="password" id="pin-input" class="pin-input" placeholder="· · · ·" maxlength="4" inputmode="numeric" pattern="[0-9]*" autocomplete="off" />
+          </label>
+          <button type="submit" class="btn btn-run" id="btn-login">登入</button>
+        </form>
+        <button class="btn-back" id="btn-back-to-id">← 返回</button>
+        <div id="reg-error" class="reg-error hidden"></div>
+        <div id="reg-loading" class="reg-loading hidden">正在登入...</div>
+      </div>
+    </div>
+  `;
+}
+
+/* ---- Step 2b: Set PIN (pre-registered student, first login) ---- */
+
+function renderSetPinStep(name: string): string {
+  return `
+    <div class="registration-overlay">
+      <div class="registration-card">
+        <h1>歡迎，${escapeHtml(name)}!</h1>
+        <p class="registration-subtitle">請設定你的 4 位數字 PIN</p>
+        <form id="set-pin-form">
+          <label class="reg-label">
+            <span>4 位數字 PIN</span>
+            <input type="password" id="set-pin-input" class="pin-input" placeholder="· · · ·" maxlength="4" inputmode="numeric" pattern="[0-9]*" autocomplete="off" />
+          </label>
+          <label class="reg-label">
+            <span>確認 PIN</span>
+            <input type="password" id="set-pin-confirm" class="pin-input" placeholder="· · · ·" maxlength="4" inputmode="numeric" pattern="[0-9]*" autocomplete="off" />
+          </label>
+          <button type="submit" class="btn btn-run" id="btn-set-pin">設定 PIN</button>
+        </form>
+        <button class="btn-back" id="btn-back-to-id">← 返回</button>
+        <div id="reg-error" class="reg-error hidden"></div>
+        <div id="reg-loading" class="reg-loading hidden">正在設定...</div>
+      </div>
+    </div>
+  `;
+}
+
+function initSetPinStep(studentId: string, name: string): void {
+  showStep(renderSetPinStep(name));
+
+  const form = document.getElementById('set-pin-form') as HTMLFormElement;
+  const pinInput = document.getElementById('set-pin-input') as HTMLInputElement;
+  const pinConfirmInput = document.getElementById('set-pin-confirm') as HTMLInputElement;
+  const backBtn = document.getElementById('btn-back-to-id')!;
+
+  backBtn.addEventListener('click', () => {
+    initStudentIdStep();
+  });
+
+  [pinInput, pinConfirmInput].forEach((input) => {
+    input.addEventListener('input', () => {
+      input.value = input.value.replace(/\D/g, '');
+    });
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const pin = pinInput.value.trim();
+    const pinConfirm = pinConfirmInput.value.trim();
+
+    if (pin.length !== 4) {
+      showError('請輸入 4 位數字 PIN');
+      return;
+    }
+    if (pin !== pinConfirm) {
+      showError('PIN 不一致，請重新輸入');
+      pinInput.value = '';
+      pinConfirmInput.value = '';
+      pinInput.focus();
+      return;
+    }
+
+    hideError();
+    showLoading('正在設定 PIN...');
+    const btn = document.getElementById('btn-set-pin') as HTMLButtonElement;
+    btn.disabled = true;
+
+    try {
+      const result = await CodeSocket.setPin({ studentId, pin });
+      currentStudentName = result.name;
+      currentStudentId = result.studentId;
+      socket = new CodeSocket();
+      const sessionInfo = await socket.join(result);
+      await initLab(sessionInfo);
+    } catch (err) {
+      btn.disabled = false;
+      hideLoading();
+      showError(err instanceof Error ? err.message : '設定失敗');
+    }
+  });
+
+  pinInput.focus();
+}
+
+/* ---- Step 2c: Register (new student) ---- */
+
+function renderRegisterStep(): string {
+  return `
+    <div class="registration-overlay">
+      <div class="registration-card">
+        <h1>建立新帳號</h1>
+        <p class="registration-subtitle">請填寫你的資料</p>
+        <form id="register-form">
           <label class="reg-label">
             <span>姓名 Name</span>
             <input type="text" id="reg-name" class="reg-input" placeholder="陳小明" required autocomplete="off" />
           </label>
           <label class="reg-label">
-            <span>學生編號 Student ID</span>
-            <input type="text" id="reg-student-id" class="reg-input" placeholder="20240001" required autocomplete="off" />
+            <span>4 位數字 PIN</span>
+            <input type="password" id="reg-pin" class="pin-input" placeholder="· · · ·" maxlength="4" inputmode="numeric" pattern="[0-9]*" autocomplete="off" />
           </label>
-          <button type="submit" class="btn btn-run" id="reg-submit">加入課堂</button>
+          <label class="reg-label">
+            <span>確認 PIN</span>
+            <input type="password" id="reg-pin-confirm" class="pin-input" placeholder="· · · ·" maxlength="4" inputmode="numeric" pattern="[0-9]*" autocomplete="off" />
+          </label>
+          <button type="submit" class="btn btn-run" id="btn-register">註冊</button>
         </form>
+        <button class="btn-back" id="btn-back-to-id">← 返回</button>
         <div id="reg-error" class="reg-error hidden"></div>
-        <div id="reg-loading" class="reg-loading hidden">正在連接...</div>
+        <div id="reg-loading" class="reg-loading hidden">正在註冊...</div>
       </div>
     </div>
   `;
@@ -285,46 +428,227 @@ function renderConstraints(constraints: string[]): string {
   return `<div class="problem-section-title">Constraints</div><ul class="constraints-list">${items}</ul>`;
 }
 
-/* ---- Registration ---- */
+/* ---- Multi-step Auth Flow ---- */
 
-function initRegistration(): void {
-  loadTheme();
+function showStep(html: string): void {
+  app.innerHTML = html;
+}
 
+function showError(message: string): void {
+  const errorDiv = document.getElementById('reg-error');
+  if (errorDiv) {
+    errorDiv.textContent = message;
+    errorDiv.classList.remove('hidden');
+  }
+}
+
+function showLoading(text: string): void {
+  const loadingDiv = document.getElementById('reg-loading');
+  if (loadingDiv) {
+    loadingDiv.textContent = text;
+    loadingDiv.classList.remove('hidden');
+  }
+}
+
+function hideLoading(): void {
+  const loadingDiv = document.getElementById('reg-loading');
+  if (loadingDiv) loadingDiv.classList.add('hidden');
+}
+
+function initStudentIdStep(): void {
   app = document.getElementById('code-app') as HTMLElement;
   if (!app) return;
 
-  app.innerHTML = renderRegistrationForm();
+  app.innerHTML = renderStudentIdStep();
 
-  const form = document.getElementById('reg-form') as HTMLFormElement;
-  const errorDiv = document.getElementById('reg-error')!;
-  const loadingDiv = document.getElementById('reg-loading')!;
-  const submitBtn = document.getElementById('reg-submit') as HTMLButtonElement;
+  const form = document.getElementById('student-id-form') as HTMLFormElement;
+  const input = document.getElementById('student-id-input') as HTMLInputElement;
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const nameInput = document.getElementById('reg-name') as HTMLInputElement;
-    const studentIdInput = document.getElementById('reg-student-id') as HTMLInputElement;
-    const name = nameInput.value.trim();
-    const studentId = studentIdInput.value.trim();
+    const studentId = input.value.trim();
+    if (!studentId) return;
 
-    if (!name || !studentId) return;
-
-    errorDiv.classList.add('hidden');
-    loadingDiv.classList.remove('hidden');
-    submitBtn.disabled = true;
+    hideError();
+    showLoading('正在查詢...');
+    const btn = document.getElementById('btn-continue') as HTMLButtonElement;
+    btn.disabled = true;
 
     try {
-      socket = new CodeSocket();
-      const sessionInfo = await socket.register({ name, studentId });
-      await initLab(sessionInfo);
+      const result = await CodeSocket.checkStudentId(studentId);
+      currentStudentId = studentId;
+
+      if (result.exists) {
+        if (result.hasPin) {
+          initLoginStep(studentId, result.name || studentId);
+        } else {
+          initSetPinStep(studentId, result.name || studentId);
+        }
+      } else {
+        initRegisterStep(studentId);
+      }
     } catch (err) {
-      loadingDiv.classList.add('hidden');
-      submitBtn.disabled = false;
-      errorDiv.textContent = err instanceof Error ? err.message : 'Connection failed';
-      errorDiv.classList.remove('hidden');
+      btn.disabled = false;
+      hideLoading();
+      showError('無法連接伺服器，請稍後再試');
     }
   });
+
+  input.focus();
+}
+
+function initLoginStep(studentId: string, name: string): void {
+  showStep(renderLoginStep(name));
+
+  const form = document.getElementById('login-form') as HTMLFormElement;
+  const pinInput = document.getElementById('pin-input') as HTMLInputElement;
+  const backBtn = document.getElementById('btn-back-to-id')!;
+
+  backBtn.addEventListener('click', () => {
+    initStudentIdStep();
+  });
+
+  // Restrict PIN input to digits only
+  pinInput.addEventListener('input', () => {
+    pinInput.value = pinInput.value.replace(/\D/g, '');
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const pin = pinInput.value.trim();
+    if (pin.length !== 4) {
+      showError('請輸入 4 位數字 PIN');
+      return;
+    }
+
+    hideError();
+    showLoading('正在登入...');
+    const btn = document.getElementById('btn-login') as HTMLButtonElement;
+    btn.disabled = true;
+
+    try {
+      const result = await CodeSocket.loginStudent({ studentId, pin });
+      if (!result.success || !result.student) {
+        btn.disabled = false;
+        hideLoading();
+        showError(result.error || '登入失敗');
+        pinInput.value = '';
+        pinInput.focus();
+        return;
+      }
+
+      currentStudentName = result.student.name;
+      currentStudentId = result.student.studentId;
+      socket = new CodeSocket();
+      const sessionInfo = await socket.join(result.student);
+      await initLab(sessionInfo);
+    } catch (err) {
+      btn.disabled = false;
+      hideLoading();
+      showError(err instanceof Error ? err.message : '登入失敗');
+    }
+  });
+
+  pinInput.focus();
+}
+
+function initRegisterStep(studentId: string): void {
+  showStep(renderRegisterStep());
+
+  const form = document.getElementById('register-form') as HTMLFormElement;
+  const nameInput = document.getElementById('reg-name') as HTMLInputElement;
+  const pinInput = document.getElementById('reg-pin') as HTMLInputElement;
+  const pinConfirmInput = document.getElementById('reg-pin-confirm') as HTMLInputElement;
+  const backBtn = document.getElementById('btn-back-to-id')!;
+
+  backBtn.addEventListener('click', () => {
+    initStudentIdStep();
+  });
+
+  // Restrict PIN inputs to digits only
+  [pinInput, pinConfirmInput].forEach((input) => {
+    input.addEventListener('input', () => {
+      input.value = input.value.replace(/\D/g, '');
+    });
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const name = nameInput.value.trim();
+    const pin = pinInput.value.trim();
+    const pinConfirm = pinConfirmInput.value.trim();
+
+    if (!name) {
+      showError('請輸入姓名');
+      return;
+    }
+    if (pin.length !== 4) {
+      showError('請輸入 4 位數字 PIN');
+      return;
+    }
+    if (pin !== pinConfirm) {
+      showError('PIN 不一致，請重新輸入');
+      pinInput.value = '';
+      pinConfirmInput.value = '';
+      pinInput.focus();
+      return;
+    }
+
+    hideError();
+    showLoading('正在註冊...');
+    const btn = document.getElementById('btn-register') as HTMLButtonElement;
+    btn.disabled = true;
+
+    try {
+      const result = await CodeSocket.registerStudent({ studentId, name, pin });
+      currentStudentName = result.name;
+      currentStudentId = result.studentId;
+      socket = new CodeSocket();
+      const sessionInfo = await socket.join(result);
+      await initLab(sessionInfo);
+    } catch (err) {
+      btn.disabled = false;
+      hideLoading();
+      showError(err instanceof Error ? err.message : '註冊失敗');
+    }
+  });
+
+  nameInput.focus();
+}
+
+function hideError(): void {
+  const errorDiv = document.getElementById('reg-error');
+  if (errorDiv) {
+    errorDiv.classList.add('hidden');
+    errorDiv.textContent = '';
+  }
+}
+
+function handleLogout(): void {
+  if (chatClient) {
+    chatClient.destroy();
+    chatClient = null;
+  }
+  if (executor) {
+    executor.destroy();
+  }
+  if (editor) {
+    editor.destroy();
+  }
+  socket?.disconnect();
+  socket = null!;
+  session = null!;
+  editor = null!;
+  executor = null!;
+  currentStudentName = '';
+  currentStudentId = '';
+  problemsById = {};
+  problemIds = [];
+  currentProblem = fallbackDefault;
+  initStudentIdStep();
 }
 
 /* ---- Problem Loading ---- */
@@ -427,6 +751,22 @@ async function initLab(sessionInfo: {
   studentId: string;
 }): Promise<void> {
   app.innerHTML = renderLayout();
+
+  // Show student name in nav
+  const navUserName = document.getElementById('nav-user-name')!;
+  navUserName.textContent = sessionInfo.studentName;
+
+  // Wire logout button
+  document.getElementById('btn-logout')!.addEventListener('click', handleLogout);
+
+  // Listen for kick (relogin from another tab)
+  const rawSocketForKick = socket.getRawSocket();
+  if (rawSocketForKick) {
+    rawSocketForKick.on('kicked', (data: { reason: string }) => {
+      alert(data.reason || '你的帳號已在另一裝置登入');
+      handleLogout();
+    });
+  }
 
   const problemPanel = document.getElementById('problem-panel')!;
   const editorPanel = document.getElementById('editor-panel')!;
@@ -942,4 +1282,7 @@ function updateStatusUI(
 }
 
 // Boot
-document.addEventListener('DOMContentLoaded', initRegistration);
+document.addEventListener('DOMContentLoaded', () => {
+  loadTheme();
+  initStudentIdStep();
+});

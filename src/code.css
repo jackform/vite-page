@@ -682,11 +682,11 @@ body {
   align-items: center;
   justify-content: center;
   height: 100vh;
-  background: var(--code-bg);
+  background: var(--code-bg-primary);
 }
 
 .registration-card {
-  background: var(--code-surface);
+  background: var(--code-bg-secondary);
   border: 1px solid var(--code-border);
   border-radius: 12px;
   padding: 40px;
@@ -698,11 +698,11 @@ body {
 .registration-card h1 {
   font-size: 1.5rem;
   margin-bottom: 8px;
-  color: var(--code-text);
+  color: var(--code-text-primary);
 }
 
 .registration-subtitle {
-  color: var(--code-muted);
+  color: var(--code-text-muted);
   margin-bottom: 24px;
   font-size: 0.9rem;
 }
@@ -714,15 +714,15 @@ body {
   gap: 6px;
   margin-bottom: 16px;
   font-size: 0.85rem;
-  color: var(--code-muted);
+  color: var(--code-text-muted);
 }
 
 .reg-input {
-  background: var(--code-bg);
+  background: var(--code-bg-primary);
   border: 1px solid var(--code-border);
   border-radius: 6px;
   padding: 10px 12px;
-  color: var(--code-text);
+  color: var(--code-text-primary);
   font-size: 0.95rem;
 }
 
@@ -732,15 +732,82 @@ body {
 }
 
 .reg-error {
-  color: var(--code-red);
+  color: var(--code-error);
   margin-top: 12px;
   font-size: 0.85rem;
 }
 
 .reg-loading {
-  color: var(--code-muted);
+  color: var(--code-text-muted);
   margin-top: 12px;
   font-size: 0.85rem;
+}
+
+/* ---- PIN Input ---- */
+
+.pin-input {
+  background: var(--code-bg-primary);
+  border: 2px solid var(--code-border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--code-text-primary);
+  font-size: 1.5rem;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  text-align: center;
+  letter-spacing: 0.5em;
+  width: 100%;
+}
+
+.pin-input:focus {
+  outline: none;
+  border-color: var(--code-accent);
+}
+
+/* ---- Back Button ---- */
+
+.btn-back {
+  background: none;
+  border: none;
+  color: var(--code-text-secondary);
+  cursor: pointer;
+  font-size: 0.85rem;
+  margin-top: 12px;
+  padding: 4px 8px;
+  transition: color 0.2s;
+}
+
+.btn-back:hover {
+  color: var(--code-accent);
+}
+
+/* ---- Nav User Area ---- */
+
+.code-nav-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.code-nav-user {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--code-accent);
+}
+
+.btn-logout {
+  background: none;
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  color: var(--code-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 10px;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.btn-logout:hover {
+  color: var(--code-error);
+  border-color: var(--code-error);
 }
 
 /* ---- Connection Status in Nav ---- */
@@ -750,7 +817,7 @@ body {
   align-items: center;
   gap: 6px;
   font-size: 0.8rem;
-  color: var(--code-muted);
+  color: var(--code-text-muted);
 }
 
 /* ---- Widget Root Window ---- */

@@ -193,6 +193,16 @@ function renderDashboard(): string {
           <div class="roster-list" id="roster-list">
             <div class="roster-empty">等待學生加入...</div>
           </div>
+          <div class="pre-reg-section">
+            <h3 class="pre-reg-title">預先註冊學生</h3>
+            <form id="pre-reg-form">
+              <input type="text" id="pre-reg-student-id" class="pre-reg-input" placeholder="學生編號" required autocomplete="off" />
+              <input type="text" id="pre-reg-name" class="pre-reg-input" placeholder="姓名" required autocomplete="off" />
+              <button type="submit" class="btn btn-pre-reg" id="btn-pre-reg">註冊</button>
+            </form>
+            <div id="pre-reg-error" class="pre-reg-error hidden"></div>
+            <div id="pre-reg-ok" class="pre-reg-ok hidden"></div>
+          </div>
         </aside>
         <div class="monitor-panel">
           <div class="monitor-student-info" id="monitor-student-info">
@@ -700,6 +710,55 @@ function initDashboard(): void {
   socket?.on('roster:update', (data) => {
     rosterEntries = data.students;
     renderRoster();
+  });
+
+  // ---- Pre-registration form ----
+
+  const preRegForm = document.getElementById('pre-reg-form') as HTMLFormElement;
+  const preRegError = document.getElementById('pre-reg-error')!;
+  const preRegOk = document.getElementById('pre-reg-ok')!;
+  const preRegBtn = document.getElementById('btn-pre-reg') as HTMLButtonElement;
+
+  preRegForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const studentIdInput = document.getElementById('pre-reg-student-id') as HTMLInputElement;
+    const nameInput = document.getElementById('pre-reg-name') as HTMLInputElement;
+    const studentId = studentIdInput.value.trim();
+    const name = nameInput.value.trim();
+
+    if (!studentId || !name) return;
+
+    preRegError.classList.add('hidden');
+    preRegOk.classList.add('hidden');
+    preRegBtn.disabled = true;
+    preRegBtn.textContent = '註冊中...';
+
+    try {
+      const res = await fetch('/api/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId, name }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        preRegOk.textContent = `已註冊 ${name} (${studentId})`;
+        preRegOk.classList.remove('hidden');
+        studentIdInput.value = '';
+        nameInput.value = '';
+      } else {
+        preRegError.textContent = data.error || '註冊失敗';
+        preRegError.classList.remove('hidden');
+      }
+    } catch {
+      preRegError.textContent = '無法連接伺服器';
+      preRegError.classList.remove('hidden');
+    } finally {
+      preRegBtn.disabled = false;
+      preRegBtn.textContent = '註冊';
+    }
   });
 
   // Code broadcast

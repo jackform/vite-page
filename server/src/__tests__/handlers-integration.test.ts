@@ -66,16 +66,26 @@ function createMockSocket(id: string) {
     hasEmit(event: string): boolean {
       return sentEvents.some((e) => e.event === event);
     },
+
+    disconnect: vi.fn((_close?: boolean) => {
+      // Simulate disconnect by triggering the handler
+      const handlers = listeners['disconnect'];
+      if (handlers) {
+        for (const h of handlers) h();
+      }
+    }),
   };
 }
 
 function createMockIO() {
   const globalEmits: Array<{ event: string; args: any[] }> = [];
   const roomEmits: Array<{ room: string; event: string; args: any[] }> = [];
+  const socketsMap: Map<string, any> = new Map();
 
   return {
     globalEmits,
     roomEmits,
+    socketsMap,
 
     emit: vi.fn((event: string, ...args: any[]) => {
       globalEmits.push({ event, args });
@@ -86,6 +96,10 @@ function createMockIO() {
         roomEmits.push({ room, event, args });
       }),
     })),
+
+    sockets: {
+      sockets: socketsMap,
+    },
   };
 }
 
@@ -102,8 +116,9 @@ describe('Socket.io Integration', () => {
 
   function createAndRegisterStudent(id: string, name: string, studentId: string) {
     const socket = createMockSocket(id);
+    io.socketsMap.set(id, socket);
     registerHandlers(io as any, socket as any, roomManager, chatStore);
-    socket.trigger('student:register', { name, studentId });
+    socket.trigger('student:join', { name, studentId });
     return socket;
   }
 
@@ -116,12 +131,12 @@ describe('Socket.io Integration', () => {
 
   // ---- 2.1 Student Registration ----
 
-  describe('student:register', () => {
+  describe('student:join', () => {
     it('registers student and sends session:registered', () => {
       const socket = createMockSocket('sock-1');
       registerHandlers(io as any, socket as any, roomManager, chatStore);
 
-      socket.trigger('student:register', { name: 'Alice', studentId: 'S001' });
+      socket.trigger('student:join', { name: 'Alice', studentId: 'S001' });
 
       const session = socket.lastEmit('session:registered');
       expect(session).toBeDefined();
@@ -134,7 +149,7 @@ describe('Socket.io Integration', () => {
       const socket = createMockSocket('sock-1');
       registerHandlers(io as any, socket as any, roomManager, chatStore);
 
-      socket.trigger('student:register', { name: 'Alice', studentId: 'S001' });
+      socket.trigger('student:join', { name: 'Alice', studentId: 'S001' });
 
       expect(socket.joinedRooms).toContain('room-S001');
     });
@@ -143,7 +158,7 @@ describe('Socket.io Integration', () => {
       const socket = createMockSocket('sock-1');
       registerHandlers(io as any, socket as any, roomManager, chatStore);
 
-      socket.trigger('student:register', { name: '', studentId: 'S001' });
+      socket.trigger('student:join', { name: '', studentId: 'S001' });
 
       const error = socket.lastEmit('register:error');
       expect(error).toBeDefined();
@@ -154,7 +169,7 @@ describe('Socket.io Integration', () => {
       const socket = createMockSocket('sock-1');
       registerHandlers(io as any, socket as any, roomManager, chatStore);
 
-      socket.trigger('student:register', { name: 'Alice', studentId: '' });
+      socket.trigger('student:join', { name: 'Alice', studentId: '' });
 
       const error = socket.lastEmit('register:error');
       expect(error).toBeDefined();
@@ -165,7 +180,7 @@ describe('Socket.io Integration', () => {
       const socket = createMockSocket('sock-1');
       registerHandlers(io as any, socket as any, roomManager, chatStore);
 
-      socket.trigger('student:register', { name: 'Alice', studentId: 'S001' });
+      socket.trigger('student:join', { name: 'Alice', studentId: 'S001' });
 
       expect(io.globalEmits.some((e) => e.event === 'roster:update')).toBe(true);
       const rosterEvent = io.globalEmits.find((e) => e.event === 'roster:update');
@@ -179,7 +194,7 @@ describe('Socket.io Integration', () => {
       const socket = createMockSocket('sock-1');
       registerHandlers(io as any, socket as any, roomManager, chatStore);
 
-      socket.trigger('student:register', { name: 'Alice', studentId: 'S001' });
+      socket.trigger('student:join', { name: 'Alice', studentId: 'S001' });
 
       const history = socket.lastEmit('chat:history');
       expect(history).toBeDefined();
@@ -190,7 +205,7 @@ describe('Socket.io Integration', () => {
       const socket = createMockSocket('sock-1');
       registerHandlers(io as any, socket as any, roomManager, chatStore);
 
-      socket.trigger('student:register', { name: 'Alice', studentId: 'S001' });
+      socket.trigger('student:join', { name: 'Alice', studentId: 'S001' });
 
       expect(socket.hasEmit('chat:history')).toBe(false);
     });
@@ -199,14 +214,14 @@ describe('Socket.io Integration', () => {
       // Pre-create and lock a student, then simulate reconnect
       const firstSocket = createMockSocket('sock-1');
       registerHandlers(io as any, firstSocket as any, roomManager, chatStore);
-      firstSocket.trigger('student:register', { name: 'Alice', studentId: 'S001' });
+      firstSocket.trigger('student:join', { name: 'Alice', studentId: 'S001' });
       roomManager.lockStudent('sock-1');
 
       // Now a new socket for the same student
       const secondSocket = createMockSocket('sock-2');
       registerHandlers(io as any, secondSocket as any, roomManager, chatStore);
 
-      secondSocket.trigger('student:register', { name: 'Alice', studentId: 'S001' });
+      secondSocket.trigger('student:join', { name: 'Alice', studentId: 'S001' });
 
       // Since the new socket gets a new record, it won't be locked
       // But the old record is still locked - this tests re-registration

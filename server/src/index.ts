@@ -9,6 +9,7 @@ import { RoomManager } from './room-manager.js';
 import { ChatStore } from './chat-store.js';
 import { registerHandlers } from './handlers.js';
 import * as problemStore from './problem-store.js';
+import * as studentStore from './student-store.js';
 import type { ClientToServerEvents, ServerToClientEvents } from '../../shared/types.js';
 
 const app = express();
@@ -46,6 +47,135 @@ const roomManager = new RoomManager();
 const chatStore = new ChatStore();
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
+
+// ---- Student Account API ----
+
+app.get('/api/students', (_req, res) => {
+  try {
+    res.json(studentStore.listStudents());
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to list students' });
+  }
+});
+
+app.get('/api/students/:studentId', (req, res) => {
+  try {
+    const account = studentStore.getStudent(req.params.studentId);
+    if (!account) {
+      res.json({ exists: false });
+      return;
+    }
+    res.json({
+      exists: true,
+      name: account.name,
+      hasPin: account.pinHash !== null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to check student' });
+  }
+});
+
+app.post('/api/students', (req, res) => {
+  try {
+    const { studentId, name } = req.body;
+    if (!studentId || !name) {
+      res.status(400).json({ error: 'studentId and name are required' });
+      return;
+    }
+    if (studentStore.hasStudent(studentId)) {
+      res.status(409).json({ error: 'Student already exists' });
+      return;
+    }
+    const account = studentStore.createStudent({ studentId, name });
+    res.status(201).json({ studentId: account.studentId, name: account.name, hasPin: false });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create student' });
+  }
+});
+
+app.post('/api/students/register', (req, res) => {
+  try {
+    const { studentId, name, pin } = req.body;
+    if (!studentId || !name || !pin) {
+      res.status(400).json({ error: 'studentId, name, and pin are required' });
+      return;
+    }
+    if (!/^\d{4}$/.test(pin)) {
+      res.status(400).json({ error: 'PIN must be 4 digits' });
+      return;
+    }
+    if (studentStore.hasStudent(studentId)) {
+      res.status(409).json({ error: 'Student already exists' });
+      return;
+    }
+    const account = studentStore.createStudent({ studentId, name, pin });
+    res.status(201).json({ studentId: account.studentId, name: account.name });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to register student' });
+  }
+});
+
+app.post('/api/students/verify', (req, res) => {
+  try {
+    const { studentId, pin } = req.body;
+    if (!studentId || !pin) {
+      res.status(400).json({ error: 'studentId and pin are required' });
+      return;
+    }
+    const account = studentStore.getStudent(studentId);
+    if (!account) {
+      res.json({ success: false, error: 'Student not found' });
+      return;
+    }
+    if (!account.pinHash) {
+      res.json({ success: false, error: 'No PIN set. Please register first.' });
+      return;
+    }
+    if (!studentStore.verifyPin(studentId, pin)) {
+      res.json({ success: false, error: 'PIN 不正確' });
+      return;
+    }
+    res.json({ success: true, student: { studentId: account.studentId, name: account.name } });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to verify PIN' });
+  }
+});
+
+app.post('/api/students/set-pin', (req, res) => {
+  try {
+    const { studentId, pin } = req.body;
+    if (!studentId || !pin) {
+      res.status(400).json({ error: 'studentId and pin are required' });
+      return;
+    }
+    if (!/^\d{4}$/.test(pin)) {
+      res.status(400).json({ error: 'PIN must be 4 digits' });
+      return;
+    }
+    const account = studentStore.getStudent(studentId);
+    if (!account) {
+      res.status(404).json({ error: 'Student not found' });
+      return;
+    }
+    const updated = studentStore.setPin(studentId, pin);
+    res.json({ studentId: updated!.studentId, name: updated!.name });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to set PIN' });
+  }
+});
+
+app.delete('/api/students/:studentId', (req, res) => {
+  try {
+    const ok = studentStore.deleteStudent(req.params.studentId);
+    if (!ok) {
+      res.status(404).json({ error: 'Student not found' });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete student' });
+  }
+});
 
 // ---- Problem CRUD API ----
 

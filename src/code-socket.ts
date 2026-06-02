@@ -5,6 +5,8 @@ import type {
   RemoteExecutionResult,
   ServerToClientEvents,
   ClientToServerEvents,
+  StudentCheckResult,
+  StudentAuthResult,
 } from '../shared/types';
 
 const SOCKET_URL = import.meta.env.VITE_SERVER_URL || window.location.origin;
@@ -18,7 +20,63 @@ export class CodeSocket {
   private socket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null;
   private handlers: Map<string, Set<(...args: any[]) => void>> = new Map();
 
-  /** Connect to the server and register as a student. */
+  /** REST: Check if a studentId exists. */
+  static async checkStudentId(studentId: string): Promise<StudentCheckResult> {
+    const res = await fetch(`/api/students/${encodeURIComponent(studentId)}`);
+    if (!res.ok) throw new Error('Failed to check student ID');
+    return res.json();
+  }
+
+  /** REST: Register a new student account with PIN. */
+  static async registerStudent(data: {
+    studentId: string;
+    name: string;
+    pin: string;
+  }): Promise<{ studentId: string; name: string }> {
+    const res = await fetch('/api/students/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Registration failed' }));
+      throw new Error(err.error || 'Registration failed');
+    }
+    return res.json();
+  }
+
+  /** REST: Verify PIN for an existing student. */
+  static async loginStudent(data: {
+    studentId: string;
+    pin: string;
+  }): Promise<StudentAuthResult> {
+    const res = await fetch('/api/students/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Login failed');
+    return res.json();
+  }
+
+  /** REST: Set PIN for a pre-registered student (first-time setup). */
+  static async setPin(data: {
+    studentId: string;
+    pin: string;
+  }): Promise<{ studentId: string; name: string }> {
+    const res = await fetch('/api/students/set-pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to set PIN' }));
+      throw new Error(err.error || 'Failed to set PIN');
+    }
+    return res.json();
+  }
+
+  /** Connect to the server and register as a student (legacy, for direct socket registration). */
   register(identity: StudentIdentity): Promise<SessionInfo> {
     return new Promise((resolve, reject) => {
       this.socket = io(SOCKET_URL, {
@@ -31,6 +89,38 @@ export class CodeSocket {
 
       sock.on('connect', () => {
         sock.emit('student:register', identity);
+      });
+
+      sock.on('session:registered', (info: SessionInfo) => {
+        resolve(info);
+      });
+
+      sock.on('register:error', (data: { error: string }) => {
+        reject(new Error(data.error));
+      });
+
+      sock.on('connect_error', (err) => {
+        reject(new Error(`Connection failed: ${err.message}`));
+      });
+    });
+  }
+
+  /** Connect to the server and join as an already-authenticated student. */
+  join(authResult: { studentId: string; name: string }): Promise<SessionInfo> {
+    return new Promise((resolve, reject) => {
+      this.socket = io(SOCKET_URL, {
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+      });
+
+      const sock = this.socket;
+
+      sock.on('connect', () => {
+        sock.emit('student:join', {
+          studentId: authResult.studentId,
+          name: authResult.name,
+        });
       });
 
       sock.on('session:registered', (info: SessionInfo) => {

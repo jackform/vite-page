@@ -65,6 +65,7 @@ export interface ServerToClientEvents {
   'execution:relay': (data: ExecutionRelayRequest) => void;
   'execution:relay-broadcast': (data: RelayExecutionResult) => void;
   'guidance:update': (data: { description: string }) => void;
+  'kicked': (data: { reason: string }) => void;
 }
 
 /** Lock state for teacher lock-and-push workflow. */
@@ -119,9 +120,37 @@ export interface AssignedProblem {
   testCases: { input: string; expected: string }[];
 }
 
+/** Student auth types for REST-based PIN login. */
+export interface StudentCheckResult {
+  exists: boolean;
+  name?: string;
+  hasPin?: boolean;
+}
+
+export interface StudentRegisterRequest {
+  studentId: string;
+  name: string;
+  pin: string;
+}
+
+export interface StudentLoginRequest {
+  studentId: string;
+  pin: string;
+}
+
+export interface StudentAuthResult {
+  success: boolean;
+  error?: string;
+  student?: {
+    studentId: string;
+    name: string;
+  };
+}
+
 /** Events the client may emit to the server. */
 export interface ClientToServerEvents {
   'student:register': (identity: StudentIdentity) => void;
+  'student:join': (data: { studentId: string; name: string }) => void;
   'code:update': (data: { code: string; timestamp: number }) => void;
   'execution:result': (data: {
     status: string;

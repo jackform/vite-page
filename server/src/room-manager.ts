@@ -19,6 +19,22 @@ interface StudentRecord {
 
 export class RoomManager {
   private studentsBySocket: Map<string, StudentRecord> = new Map();
+  private studentIdToSocket: Map<string, string> = new Map();
+
+  /** Get the socket ID for a given studentId (for kick-on-relogin). */
+  getSocketByStudentId(studentId: string): string | undefined {
+    return this.studentIdToSocket.get(studentId);
+  }
+
+  /** Register the studentId → socketId mapping. */
+  setStudentSocket(studentId: string, socketId: string): void {
+    this.studentIdToSocket.set(studentId, socketId);
+  }
+
+  /** Remove the studentId → socketId mapping. */
+  removeStudentSocket(studentId: string): void {
+    this.studentIdToSocket.delete(studentId);
+  }
 
   addStudent(socketId: string, studentId: string, name: string): StudentRecord {
     const roomId = `room-${studentId}`;
@@ -34,6 +50,7 @@ export class RoomManager {
       isLocked: false,
     };
     this.studentsBySocket.set(socketId, record);
+    this.studentIdToSocket.set(studentId, socketId);
     return record;
   }
 
@@ -41,6 +58,7 @@ export class RoomManager {
     const record = this.studentsBySocket.get(socketId);
     if (record) {
       this.studentsBySocket.delete(socketId);
+      this.studentIdToSocket.delete(record.studentId);
     }
     return record;
   }
