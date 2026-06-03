@@ -30,7 +30,7 @@ export function createMockServerSocket(id: string) {
     emit: vi.fn((event: string, ...args: any[]) => {
       const handlers = listeners[event];
       if (handlers) {
-        for (const h of handlers) handlers.push(h(...args));
+        for (const h of handlers) h(...args);
       }
     }),
 

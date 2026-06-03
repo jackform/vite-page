@@ -43,6 +43,7 @@ if (!fs.existsSync(INDEX_FILE)) {
 }
 
 export interface ProblemMeta {
+  id: string;
   file: string;
   title: string;
   difficulty: 'easy' | 'medium' | 'hard';
@@ -54,7 +55,6 @@ export interface ProblemMeta {
 }
 
 export interface Problem extends ProblemMeta {
-  id: string;
   description: string;
   examples: { input: string; output: string; explanation?: string }[];
   constraints: string[];
@@ -106,6 +106,7 @@ export function createProblem(problem: Problem): Problem {
   problem.updatedAt = now;
 
   const meta: ProblemMeta = {
+    id: problem.id,
     file: `${problem.id}.json`,
     title: problem.title,
     difficulty: problem.difficulty,
@@ -137,6 +138,7 @@ export function updateProblem(id: string, updates: Partial<Problem>): Problem | 
   const index = readIndex();
   if (index.problems[id]) {
     index.problems[id] = {
+      id,
       file: `${id}.json`,
       title: merged.title,
       difficulty: merged.difficulty,
