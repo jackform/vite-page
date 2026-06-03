@@ -10,6 +10,7 @@ import { ChatStore } from './chat-store.js';
 import { registerHandlers } from './handlers.js';
 import * as problemStore from './problem-store.js';
 import * as studentStore from './student-store.js';
+import * as codeStore from './code-store.js';
 import type { ClientToServerEvents, ServerToClientEvents } from '../../shared/types.js';
 
 const app = express();
@@ -52,7 +53,12 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.get('/api/students', (_req, res) => {
   try {
-    res.json(studentStore.listStudents());
+    const accounts = studentStore.listStudentAccounts();
+    res.json(accounts.map((s) => ({
+      studentId: s.studentId,
+      name: s.name,
+      online: roomManager.isStudentOnline(s.studentId),
+    })));
   } catch (err) {
     res.status(500).json({ error: 'Failed to list students' });
   }
@@ -174,6 +180,50 @@ app.delete('/api/students/:studentId', (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete student' });
+  }
+});
+
+// ---- Code Persistence API ----
+
+app.get('/api/students/:studentId/code/:problemId', (req, res) => {
+  try {
+    const data = codeStore.getCode(req.params.studentId, req.params.problemId);
+    if (!data) {
+      res.status(404).json({ error: 'No saved code found' });
+      return;
+    }
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get saved code' });
+  }
+});
+
+app.put('/api/students/:studentId/code/:problemId', (req, res) => {
+  try {
+    const { code } = req.body;
+    if (typeof code !== 'string') {
+      res.status(400).json({ error: 'code is required' });
+      return;
+    }
+    const data = codeStore.saveCode(req.params.studentId, req.params.problemId, code);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save code' });
+  }
+});
+
+app.get('/api/students/:studentId/classroom-status', (req, res) => {
+  try {
+    // Register heartbeat for online-status tracking
+    roomManager.markStudentSeen(req.params.studentId);
+    const problem = roomManager.getPendingClassroom(req.params.studentId);
+    if (problem) {
+      res.json({ classroom: true, problem });
+    } else {
+      res.json({ classroom: false });
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to check classroom status' });
   }
 });
 

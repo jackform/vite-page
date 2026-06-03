@@ -10,6 +10,7 @@ export interface SessionInfo {
   userId: string;
   studentName: string;
   studentId: string;
+  mode?: 'free_practice' | 'classroom';
 }
 
 export interface RosterEntry {
@@ -18,6 +19,7 @@ export interface RosterEntry {
   roomId: string;
   connected: boolean;
   joinedAt: number;
+  mode: 'free_practice' | 'classroom';
 }
 
 export interface RemoteExecutionResult {
@@ -66,6 +68,7 @@ export interface ServerToClientEvents {
   'execution:relay-broadcast': (data: RelayExecutionResult) => void;
   'guidance:update': (data: { description: string }) => void;
   'kicked': (data: { reason: string }) => void;
+  'classroom:exited': (data: { reason: string }) => void;
 }
 
 /** Lock state for teacher lock-and-push workflow. */
@@ -147,10 +150,31 @@ export interface StudentAuthResult {
   };
 }
 
+/** Basic student info returned by the students list API. */
+export interface StudentInfo {
+  studentId: string;
+  name: string;
+  online: boolean;
+}
+
+/** Saved code data for per-student per-problem persistence. */
+export interface SavedCodeData {
+  studentId: string;
+  problemId: string;
+  code: string;
+  savedAt: string;
+}
+
+/** Response from classroom-status polling endpoint. */
+export interface ClassroomStatusResponse {
+  classroom: boolean;
+  problem?: AssignedProblem;
+}
+
 /** Events the client may emit to the server. */
 export interface ClientToServerEvents {
   'student:register': (identity: StudentIdentity) => void;
-  'student:join': (data: { studentId: string; name: string }) => void;
+  'student:join': (data: { studentId: string; name: string; mode?: 'free_practice' | 'classroom' }) => void;
   'code:update': (data: { code: string; timestamp: number }) => void;
   'execution:result': (data: {
     status: string;
@@ -174,4 +198,6 @@ export interface ClientToServerEvents {
   'execution:request': (data: ExecutionRelayRequest) => void;
   'execution:relay-result': (data: RelayExecutionResult) => void;
   'guidance:push': (data: { roomId: string; description: string }) => void;
+  'classroom:end': (data: { roomId: string }) => void;
+  'classroom:leave': () => void;
 }

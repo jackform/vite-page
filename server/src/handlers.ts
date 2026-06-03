@@ -11,9 +11,48 @@ import { ChatStore } from './chat-store.js';
 import { registerChatHandlers } from './chat-handlers.js';
 import { registerLockHandlers } from './lock-handlers.js';
 import { validateTeacherPassword } from './auth.js';
+import * as codeStore from './code-store.js';
+import * as studentStore from './student-store.js';
 
 // Track which student room each teacher is currently watching
 const teacherWatching: Map<string, string> = new Map();
+
+/** End a classroom session: save code, auto-unlock, remove student from roster. */
+function endClassroom(
+  io: Server<ClientToServerEvents, ServerToClientEvents>,
+  socketId: string,
+  roomManager: RoomManager,
+): void {
+  const student = roomManager.getStudentBySocket(socketId);
+  if (!student) return;
+
+  // Save current code to persistent storage
+  const code = student.currentCode?.code || '';
+  const problemId = student.assignedProblem?.id || 'unknown';
+  if (code) {
+    codeStore.saveCode(student.studentId, problemId, code);
+  }
+
+  // Auto-unlock if locked
+  if (student.isLocked) {
+    roomManager.unlockStudent(socketId);
+    io.to(student.roomId).emit('editor:unlocked', { roomId: student.roomId, isLocked: false });
+  }
+
+  // Notify the student
+  io.to(student.roomId).emit('classroom:exited', { reason: 'Classroom session ended' });
+
+  // Remove from room manager
+  roomManager.removeStudent(socketId);
+
+  // Update roster
+  io.emit('roster:update', { students: roomManager.getRoster() });
+}
+
+/** Extract studentId from a roomId (format: "room-{studentId}"). */
+function studentIdFromRoomId(roomId: string): string {
+  return roomId.replace('room-', '');
+}
 
 export function registerHandlers(
   io: Server<ClientToServerEvents, ServerToClientEvents>,
@@ -23,8 +62,8 @@ export function registerHandlers(
 ): void {
   // ---- Student Events ----
 
-  socket.on('student:join', (data: { studentId: string; name: string }) => {
-    const { name, studentId } = data;
+  socket.on('student:join', (data: { studentId: string; name: string; mode?: 'free_practice' | 'classroom' }) => {
+    const { name, studentId, mode } = data;
 
     if (!name || !name.trim()) {
       socket.emit('register:error', { error: 'Name is required' });
@@ -45,7 +84,7 @@ export function registerHandlers(
       }
     }
 
-    const record = roomManager.addStudent(socket.id, studentId.trim(), name.trim());
+    const record = roomManager.addStudent(socket.id, studentId.trim(), name.trim(), mode || 'classroom');
     socket.join(record.roomId);
 
     socket.emit('session:registered', {
@@ -53,6 +92,7 @@ export function registerHandlers(
       userId: socket.id,
       studentName: record.name,
       studentId: record.studentId,
+      mode: record.mode,
     });
 
     // Send existing chat history to the newly registered student
@@ -170,7 +210,12 @@ export function registerHandlers(
     if (!socket.data.isTeacher) return;
 
     const student = roomManager.getStudentByRoomId(data.roomId);
-    if (!student) return;
+    if (!student) {
+      // Student is offline (free-practice mode), queue as pending push
+      const studentId = studentIdFromRoomId(data.roomId);
+      roomManager.setPendingClassroom(studentId, data.problem);
+      return;
+    }
 
     roomManager.assignProblem(student.socketId, data.problem);
     io.to(data.roomId).emit('problem:assigned', { problem: data.problem });
@@ -180,11 +225,22 @@ export function registerHandlers(
     if (!socket.data.isTeacher) return;
 
     const roster = roomManager.getRoster();
+    const pushedIds = new Set<string>();
+
     for (const entry of roster) {
       const student = roomManager.getStudentByRoomId(entry.roomId);
       if (student) {
         roomManager.assignProblem(student.socketId, data.problem);
         io.to(entry.roomId).emit('problem:assigned', { problem: data.problem });
+        pushedIds.add(student.studentId);
+      }
+    }
+
+    // Also set pending classroom for known students who are not currently online
+    const allStudentIds = studentStore.listStudents();
+    for (const sid of allStudentIds) {
+      if (!pushedIds.has(sid) && !roomManager.getStudentByStudentId(sid)) {
+        roomManager.setPendingClassroom(sid, data.problem);
       }
     }
   });
@@ -219,6 +275,32 @@ export function registerHandlers(
 
   registerLockHandlers(io, socket, teacherWatching, roomManager);
 
+  // ---- Classroom End ----
+
+  socket.on('classroom:end', (data: { roomId: string }) => {
+    if (!socket.data.isTeacher) return;
+
+    // Verify teacher is watching this room
+    const watchingRoom = teacherWatching.get(socket.id);
+    if (watchingRoom !== data.roomId) return;
+
+    const student = roomManager.getStudentByRoomId(data.roomId);
+    if (!student) return;
+
+    socket.leave(data.roomId);
+    teacherWatching.delete(socket.id);
+
+    endClassroom(io, student.socketId, roomManager);
+  });
+
+  socket.on('classroom:leave', () => {
+    const student = roomManager.getStudentBySocket(socket.id);
+    if (!student) return;
+    if (student.mode !== 'classroom') return;
+
+    endClassroom(io, socket.id, roomManager);
+  });
+
   // ---- Disconnect ----
 
   socket.on('disconnect', () => {
@@ -241,7 +323,10 @@ export function registerHandlers(
         if (student.isLocked) {
           io.to(student.roomId).emit('editor:unlocked', { roomId: student.roomId, isLocked: false });
         }
-        io.emit('roster:update', { students: roomManager.getRoster() });
+        // Only broadcast roster update for classroom-mode students
+        if (student.mode === 'classroom') {
+          io.emit('roster:update', { students: roomManager.getRoster() });
+        }
       }
     }
   });

@@ -1094,3 +1094,61 @@ body {
   transform: translateX(-50%) translateY(0);
   opacity: 1;
 }
+
+/* ---- Classroom Banner ---- */
+
+.classroom-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--code-accent);
+  color: var(--code-bg-tertiary);
+  font-size: 14px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.classroom-banner.hidden {
+  display: none;
+}
+
+.btn-exit-classroom {
+  background: var(--code-bg-tertiary);
+  color: var(--code-text-primary);
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.btn-exit-classroom:hover {
+  background: var(--code-error);
+  color: #fff;
+  border-color: var(--code-error);
+}
+
+/* ---- Mode Badge ---- */
+
+.code-nav-mode {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.code-nav-mode.mode-free-practice {
+  background: var(--code-bg-secondary);
+  color: var(--code-text-muted);
+  border: 1px solid var(--code-border);
+}
+
+.code-nav-mode.mode-classroom {
+  background: var(--code-accent);
+  color: #fff;
+}

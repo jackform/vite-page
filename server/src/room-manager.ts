@@ -15,15 +15,29 @@ interface StudentRecord {
   lastExecution: RemoteExecutionResult | null;
   assignedProblem: AssignedProblem | null;
   isLocked: boolean;
+  mode: 'free_practice' | 'classroom';
 }
 
 export class RoomManager {
   private studentsBySocket: Map<string, StudentRecord> = new Map();
   private studentIdToSocket: Map<string, string> = new Map();
+  /** Pending classroom pushes for students who are in free-practice mode (offline from socket). */
+  private pendingClassroom: Map<string, AssignedProblem> = new Map();
+  /** Last-seen timestamps for heartbeat tracking (free-practice students). */
+  private studentLastSeen: Map<string, number> = new Map();
+  /** Heartbeat threshold in ms: student is "online" if seen within this window. */
+  private static readonly HEARTBEAT_WINDOW = 15000;
 
   /** Get the socket ID for a given studentId (for kick-on-relogin). */
   getSocketByStudentId(studentId: string): string | undefined {
     return this.studentIdToSocket.get(studentId);
+  }
+
+  /** Get the student record by studentId (not socketId). */
+  getStudentByStudentId(studentId: string): StudentRecord | undefined {
+    const socketId = this.studentIdToSocket.get(studentId);
+    if (!socketId) return undefined;
+    return this.studentsBySocket.get(socketId);
   }
 
   /** Register the studentId → socketId mapping. */
@@ -36,7 +50,7 @@ export class RoomManager {
     this.studentIdToSocket.delete(studentId);
   }
 
-  addStudent(socketId: string, studentId: string, name: string): StudentRecord {
+  addStudent(socketId: string, studentId: string, name: string, mode: 'free_practice' | 'classroom' = 'classroom'): StudentRecord {
     const roomId = `room-${studentId}`;
     const record: StudentRecord = {
       studentId,
@@ -48,6 +62,7 @@ export class RoomManager {
       lastExecution: null,
       assignedProblem: null,
       isLocked: false,
+      mode,
     };
     this.studentsBySocket.set(socketId, record);
     this.studentIdToSocket.set(studentId, socketId);
@@ -117,18 +132,54 @@ export class RoomManager {
     return this.studentsBySocket.get(socketId)?.isLocked ?? false;
   }
 
+  /** Store a pending classroom push for an offline (free-practice) student. */
+  setPendingClassroom(studentId: string, problem: AssignedProblem): void {
+    this.pendingClassroom.set(studentId, problem);
+  }
+
+  /** Get and clear the pending classroom push for a student. */
+  getPendingClassroom(studentId: string): AssignedProblem | undefined {
+    const problem = this.pendingClassroom.get(studentId);
+    if (problem) {
+      this.pendingClassroom.delete(studentId);
+    }
+    return problem;
+  }
+
+  /** Check if a student has a pending classroom push. */
+  hasPendingClassroom(studentId: string): boolean {
+    return this.pendingClassroom.has(studentId);
+  }
+
+  /** Only classroom-mode students appear in the roster. */
   getRoster(): RosterEntry[] {
     const entries: RosterEntry[] = [];
     for (const record of this.studentsBySocket.values()) {
+      if (record.mode !== 'classroom') continue;
       entries.push({
         studentId: record.studentId,
         name: record.name,
         roomId: record.roomId,
         connected: true,
         joinedAt: record.joinedAt,
+        mode: record.mode,
       });
     }
     return entries;
+  }
+
+  /** Mark a student as recently seen (called on classroom-status poll heartbeat). */
+  markStudentSeen(studentId: string): void {
+    this.studentLastSeen.set(studentId, Date.now());
+  }
+
+  /** Check if a student is online (socket-connected or recent heartbeat). */
+  isStudentOnline(studentId: string): boolean {
+    // Socket-connected (classroom mode)
+    if (this.getStudentByStudentId(studentId)) return true;
+    // Free-practice with recent heartbeat
+    const lastSeen = this.studentLastSeen.get(studentId);
+    return lastSeen != null && Date.now() - lastSeen < RoomManager.HEARTBEAT_WINDOW;
   }
 
   getTeacherWatchers(roomId: string): string[] {

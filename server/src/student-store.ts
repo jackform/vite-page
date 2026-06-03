@@ -58,6 +58,12 @@ export function listStudents(): string[] {
   return readIndex().students;
 }
 
+export function listStudentAccounts(): StudentAccount[] {
+  return readIndex().students
+    .map((id) => getStudent(id))
+    .filter((s): s is StudentAccount => s !== null);
+}
+
 export function getStudent(id: string): StudentAccount | null {
   const file = studentPath(id);
   if (!fs.existsSync(file)) return null;

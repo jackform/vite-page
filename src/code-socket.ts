@@ -7,6 +7,8 @@ import type {
   ClientToServerEvents,
   StudentCheckResult,
   StudentAuthResult,
+  SavedCodeData,
+  ClassroomStatusResponse,
 } from '../shared/types';
 
 const SOCKET_URL = import.meta.env.VITE_SERVER_URL || window.location.origin;
@@ -76,6 +78,35 @@ export class CodeSocket {
     return res.json();
   }
 
+  /** REST: Get saved code for a student + problem. */
+  static async getSavedCode(studentId: string, problemId: string): Promise<SavedCodeData | null> {
+    const res = await fetch(`/api/students/${encodeURIComponent(studentId)}/code/${encodeURIComponent(problemId)}`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error('Failed to get saved code');
+    return res.json();
+  }
+
+  /** REST: Save code for a student + problem. */
+  static async saveCode(studentId: string, problemId: string, code: string): Promise<SavedCodeData> {
+    const res = await fetch(`/api/students/${encodeURIComponent(studentId)}/code/${encodeURIComponent(problemId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to save code' }));
+      throw new Error(err.error || 'Failed to save code');
+    }
+    return res.json();
+  }
+
+  /** REST: Poll classroom status for pending teacher pushes. */
+  static async getClassroomStatus(studentId: string): Promise<ClassroomStatusResponse> {
+    const res = await fetch(`/api/students/${encodeURIComponent(studentId)}/classroom-status`);
+    if (!res.ok) throw new Error('Failed to check classroom status');
+    return res.json();
+  }
+
   /** Connect to the server and register as a student (legacy, for direct socket registration). */
   register(identity: StudentIdentity): Promise<SessionInfo> {
     return new Promise((resolve, reject) => {
@@ -106,7 +137,7 @@ export class CodeSocket {
   }
 
   /** Connect to the server and join as an already-authenticated student. */
-  join(authResult: { studentId: string; name: string }): Promise<SessionInfo> {
+  join(authResult: { studentId: string; name: string }, mode: 'free_practice' | 'classroom' = 'classroom'): Promise<SessionInfo> {
     return new Promise((resolve, reject) => {
       this.socket = io(SOCKET_URL, {
         reconnection: true,
@@ -120,6 +151,7 @@ export class CodeSocket {
         sock.emit('student:join', {
           studentId: authResult.studentId,
           name: authResult.name,
+          mode,
         });
       });
 

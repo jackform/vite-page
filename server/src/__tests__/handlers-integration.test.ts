@@ -687,4 +687,160 @@ describe('Socket.io Integration', () => {
       expect(teacher.joinedRooms).toContain('room-S002');
     });
   });
+
+  // ---- 2.10 Classroom Mode ----
+
+  describe('classroom mode', () => {
+    it('student:join with free_practice mode sets mode correctly', () => {
+      const socket = createMockSocket('sock-fp');
+      registerHandlers(io as any, socket as any, roomManager, chatStore);
+
+      socket.trigger('student:join', { name: 'FreeStudent', studentId: 'FS001', mode: 'free_practice' });
+
+      const student = roomManager.getStudentBySocket('sock-fp');
+      expect(student?.mode).toBe('free_practice');
+    });
+
+    it('free-practice student does not appear in roster', () => {
+      const socket = createMockSocket('sock-fp');
+      registerHandlers(io as any, socket as any, roomManager, chatStore);
+
+      socket.trigger('student:join', { name: 'FreeStudent', studentId: 'FS001', mode: 'free_practice' });
+
+      const rosterEvent = io.globalEmits.find((e) => e.event === 'roster:update');
+      expect(rosterEvent!.args[0].students).toHaveLength(0);
+    });
+
+    it('classroom student appears in roster', () => {
+      const socket = createMockSocket('sock-cls');
+      registerHandlers(io as any, socket as any, roomManager, chatStore);
+
+      socket.trigger('student:join', { name: 'ClassStudent', studentId: 'CS001', mode: 'classroom' });
+
+      const rosterEvent = io.globalEmits.find((e) => e.event === 'roster:update');
+      expect(rosterEvent!.args[0].students).toHaveLength(1);
+      expect(rosterEvent!.args[0].students[0].mode).toBe('classroom');
+    });
+
+    it('problem:push queues pending classroom for offline student', () => {
+      const teacher = createAndRegisterTeacher('teacher-1');
+
+      const sampleProblem = {
+        id: 'p-test', title: 'Offline Push', difficulty: 'easy' as const,
+        description: 'desc', examples: [], constraints: [],
+        starterCode: 'print(1)', testCases: [],
+      };
+
+      // Push to a room where no student is connected
+      teacher.trigger('problem:push', { roomId: 'room-OFFLINE', problem: sampleProblem });
+
+      expect(roomManager.hasPendingClassroom('OFFLINE')).toBe(true);
+      const pending = roomManager.getPendingClassroom('OFFLINE');
+      expect(pending).toBeDefined();
+      expect(pending!.title).toBe('Offline Push');
+    });
+
+    it('classroom:end by teacher removes student and emits classroom:exited', () => {
+      createAndRegisterStudent('sock-1', 'Alice', 'S001');
+      const teacher = createAndRegisterTeacher('teacher-end');
+      teacher.trigger('room:subscribe', { roomId: 'room-S001' });
+
+      // First set some code so endClassroom saves it
+      roomManager.updateCode('sock-1', 'print("saved")', Date.now());
+
+      teacher.trigger('classroom:end', { roomId: 'room-S001' });
+
+      // Student should be removed
+      expect(roomManager.getStudentBySocket('sock-1')).toBeUndefined();
+
+      // classroom:exited should be emitted to the room
+      const exitedEmit = io.roomEmits.find((e) => e.room === 'room-S001' && e.event === 'classroom:exited');
+      expect(exitedEmit).toBeDefined();
+      expect(exitedEmit!.args[0].reason).toBe('Classroom session ended');
+
+      // Roster should be empty
+      const rosterEvent = io.globalEmits.filter((e) => e.event === 'roster:update');
+      const lastRoster = rosterEvent[rosterEvent.length - 1];
+      expect(lastRoster.args[0].students).toHaveLength(0);
+    });
+
+    it('classroom:end by teacher auto-unlocks locked student', () => {
+      createAndRegisterStudent('sock-1', 'Alice', 'S001');
+      const teacher = createAndRegisterTeacher('teacher-end');
+      teacher.trigger('room:subscribe', { roomId: 'room-S001' });
+      teacher.trigger('editor:lock', { roomId: 'room-S001' });
+      expect(roomManager.isStudentLocked('sock-1')).toBe(true);
+
+      teacher.trigger('classroom:end', { roomId: 'room-S001' });
+
+      // Student should be removed, lock won't matter
+      expect(roomManager.getStudentBySocket('sock-1')).toBeUndefined();
+
+      // editor:unlocked should also have been emitted
+      const unlockedEmit = io.roomEmits.find((e) => e.room === 'room-S001' && e.event === 'editor:unlocked');
+      expect(unlockedEmit).toBeDefined();
+    });
+
+    it('classroom:leave by student removes student', () => {
+      const student = createAndRegisterStudent('sock-2', 'Bob', 'S002');
+
+      student.trigger('classroom:leave');
+
+      // Should be removed
+      expect(roomManager.getStudentBySocket('sock-2')).toBeUndefined();
+
+      // classroom:exited should be emitted
+      const exitedEmit = io.roomEmits.find((e) => e.room === 'room-S002' && e.event === 'classroom:exited');
+      expect(exitedEmit).toBeDefined();
+    });
+
+    it('classroom:end blocked for non-teacher', () => {
+      createAndRegisterStudent('sock-1', 'Alice', 'S001');
+      const notTeacher = createMockSocket('random');
+      registerHandlers(io as any, notTeacher as any, roomManager, chatStore);
+
+      notTeacher.trigger('classroom:end', { roomId: 'room-S001' });
+
+      // Student should still be there
+      expect(roomManager.getStudentBySocket('sock-1')).toBeDefined();
+    });
+
+    it('free-practice disconnect does not broadcast roster update', () => {
+      // Clear previous global emits
+      io.globalEmits.length = 0;
+
+      // Register a free-practice student
+      const socket = createMockSocket('sock-fp');
+      registerHandlers(io as any, socket as any, roomManager, chatStore);
+      socket.trigger('student:join', { name: 'FreeStudent', studentId: 'FS001', mode: 'free_practice' });
+
+      // Clear any roster updates from join
+      io.globalEmits.length = 0;
+
+      socket.trigger('disconnect');
+
+      // Should not have emitted roster:update (free-practice disconnect)
+      const rosterUpdates = io.globalEmits.filter((e) => e.event === 'roster:update');
+      expect(rosterUpdates).toHaveLength(0);
+    });
+
+    it('classroom disconnect does broadcast roster update', () => {
+      // Clear previous global emits
+      io.globalEmits.length = 0;
+
+      // Register a classroom student
+      const socket = createMockSocket('sock-cls');
+      registerHandlers(io as any, socket as any, roomManager, chatStore);
+      socket.trigger('student:join', { name: 'ClassStudent', studentId: 'CS001', mode: 'classroom' });
+
+      // Clear any roster updates from join
+      io.globalEmits.length = 0;
+
+      socket.trigger('disconnect');
+
+      // Should have emitted roster:update
+      const rosterUpdates = io.globalEmits.filter((e) => e.event === 'roster:update');
+      expect(rosterUpdates).toHaveLength(1);
+    });
+  });
 });

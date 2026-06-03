@@ -32,8 +32,10 @@ const THEME_KEY = 'python-lab-theme';
 let app: HTMLElement;
 let socket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null;
 let selectedRoomId: string | null = null;
+let selectedStudentId: string | null = null;
 let codeEditor: CodeEditor | null = null;
 let rosterEntries: RosterEntry[] = [];
+let allStudents: { studentId: string; name: string; online: boolean }[] = [];
 let password = '';
 let currentTab: 'monitor' | 'problems' = 'monitor';
 let problemManager: ProblemManager | null = null;
@@ -208,12 +210,13 @@ function renderDashboard(): string {
           <div class="monitor-student-info" id="monitor-student-info">
             <span class="monitor-placeholder">請選擇一名學生查看代碼</span>
           </div>
-          <div class="monitor-push-bar" id="monitor-push-bar" style="display:none">
+          <div class="monitor-push-bar" id="monitor-push-bar">
             <div class="push-bar-row">
               <select id="push-problem-select" class="push-select">
                 <option value="">選擇要推送的題目...</option>
               </select>
-              <button class="btn btn-push" id="btn-push-to-student">推送給此學生</button>
+              <input type="text" id="push-student-id" class="push-student-id-input" placeholder="學生編號（可選）" autocomplete="off" />
+              <button class="btn btn-push" id="btn-push-to-student">推送給學生</button>
               <button class="btn btn-push-all" id="btn-push-to-all">推送給所有學生</button>
             </div>
           </div>
@@ -227,6 +230,7 @@ function renderDashboard(): string {
               <button class="btn btn-run-locked hidden" id="btn-run-locked" title="在學生端執行代碼">▶ Run</button>
               <button class="btn btn-unlock-push hidden" id="btn-unlock-push" title="推送代碼並解鎖">推送並解鎖</button>
               <button class="btn btn-unlock-cancel hidden" id="btn-unlock-cancel" title="取消並恢復原始代碼">取消</button>
+              <button class="btn btn-end-classroom hidden" id="btn-end-classroom" title="結束課堂模式">結束課堂</button>
             </div>
             <div class="monitor-editor" id="monitor-editor"></div>
             <div id="monitor-tab-bar-container"></div>
@@ -310,6 +314,15 @@ function initDashboard(): void {
   // Tab switching
   initTabs();
 
+  // Populate push dropdown on init
+  refreshPushDropdown();
+
+  // Fetch all registered students for the roster
+  fetchAllStudents();
+
+  // Periodically refresh student list for online/offline status
+  setInterval(fetchAllStudents, 10000);
+
   /* ---- Chat ---- */
 
   const monitorTabBarContainer = document.getElementById('monitor-tab-bar-container')!;
@@ -349,33 +362,64 @@ function initDashboard(): void {
 
   /* ---- Monitor Tab ---- */
 
-  function renderRoster(): void {
-    studentCount.textContent = String(rosterEntries.length);
+  async function fetchAllStudents(): Promise<void> {
+    try {
+      const res = await fetch('/api/students');
+      if (res.ok) {
+        allStudents = await res.json();
+        renderRoster();
+      }
+    } catch {
+      // API unavailable, roster will be empty
+    }
+  }
 
-    if (rosterEntries.length === 0) {
-      rosterList.innerHTML = '<div class="roster-empty">等待學生加入...</div>';
+  function renderRoster(): void {
+    // Build merged list: all registered students + classroom status overlay
+    const classroomMap = new Map(rosterEntries.map((e) => [e.studentId, e]));
+    const isSelected = (sid: string) => sid === selectedStudentId || `room-${sid}` === selectedRoomId;
+
+    const mergedCount = allStudents.length;
+    studentCount.textContent = String(mergedCount);
+
+    if (mergedCount === 0) {
+      rosterList.innerHTML = '<div class="roster-empty">尚無註冊學生</div>';
       return;
     }
 
-    rosterList.innerHTML = rosterEntries
-      .map(
-        (entry) => `
-          <div class="roster-item ${entry.roomId === selectedRoomId ? 'active' : ''}"
-               data-room-id="${entry.roomId}">
-            <span class="roster-status ${entry.connected ? 'online' : 'offline'}"></span>
+    rosterList.innerHTML = allStudents
+      .map((student) => {
+        const classroomEntry = classroomMap.get(student.studentId);
+        const inClassroom = !!classroomEntry;
+        const isOnline = student.online;
+        const active = isSelected(student.studentId) ? 'active' : '';
+        const modeClass = inClassroom ? 'mode-classroom' : 'mode-free';
+        const modeLabel = inClassroom ? '課堂' : '自由';
+        const roomId = inClassroom ? classroomEntry!.roomId : `room-${student.studentId}`;
+
+        return `
+          <div class="roster-item ${active} ${modeClass}"
+               data-student-id="${escapeHtml(student.studentId)}"
+               data-room-id="${escapeHtml(roomId)}"
+               data-in-classroom="${inClassroom ? '1' : '0'}">
+            <span class="roster-status ${isOnline ? 'online' : 'offline'}"></span>
             <div class="roster-info">
-              <span class="roster-name">${escapeHtml(entry.name)}</span>
-              <span class="roster-id">${escapeHtml(entry.studentId)}</span>
+              <span class="roster-name">${escapeHtml(student.name)}</span>
+              <span class="roster-id">${escapeHtml(student.studentId)}</span>
             </div>
+            <span class="roster-mode-badge ${modeClass}">${modeLabel}</span>
           </div>
-        `
-      )
+        `;
+      })
       .join('');
 
     rosterList.querySelectorAll('.roster-item').forEach((item) => {
       item.addEventListener('click', () => {
-        const roomId = (item as HTMLElement).dataset.roomId!;
-        selectStudent(roomId);
+        const el = item as HTMLElement;
+        const studentId = el.dataset.studentId!;
+        const roomId = el.dataset.roomId!;
+        const inClassroom = el.dataset.inClassroom === '1';
+        selectStudent(studentId, roomId, inClassroom);
       });
     });
   }
@@ -401,10 +445,9 @@ function initDashboard(): void {
     `;
   }
 
-  function selectStudent(roomId: string): void {
+  function selectStudent(studentId: string, roomId: string, inClassroom: boolean): void {
     // Auto-unlock previous student if locked
     if (selectedRoomId && isLocked) {
-      // Cancel lock on previous student
       if (preLockCode) {
         socket?.emit('code:teacher-update', {
           roomId: selectedRoomId,
@@ -424,60 +467,120 @@ function initDashboard(): void {
       }
     }
 
+    // Unsubscribe from previous room
     if (selectedRoomId) {
       socket?.emit('room:unsubscribe', { roomId: selectedRoomId });
     }
 
-    selectedRoomId = roomId;
-    socket?.emit('room:subscribe', { roomId });
+    // Find student info
+    const student = allStudents.find((s) => s.studentId === studentId);
+    const studentName = student?.name || studentId;
 
-    // Initialize chat for this student
-    resetChatForRoom(roomId);
+    if (inClassroom) {
+      // === Classroom mode: full monitoring ===
+      selectedRoomId = roomId;
+      selectedStudentId = null;
+      socket?.emit('room:subscribe', { roomId });
 
-    const entry = rosterEntries.find((e) => e.roomId === roomId);
-    if (entry) {
+      // Initialize chat for this student
+      resetChatForRoom(roomId);
+
       monitorStudentInfo.innerHTML = `
-        <span class="monitor-student-name">${escapeHtml(entry.name)}</span>
-        <span class="monitor-student-id">${escapeHtml(entry.studentId)}</span>
+        <span class="monitor-student-name">${escapeHtml(studentName)}</span>
+        <span class="monitor-student-id">${escapeHtml(studentId)}</span>
+        <span class="monitor-mode-badge mode-classroom">課堂模式</span>
       `;
+
+      refreshPushDropdown();
+
+      const btnEndClassroom = document.getElementById('btn-end-classroom')!;
+      btnEndClassroom.classList.remove('hidden');
+
+      const viewTabs = document.getElementById('monitor-view-tabs')!;
+      viewTabs.style.display = 'flex';
+
+      const codeView = document.getElementById('monitor-view-code')!;
+      codeView.style.display = '';
+
+      // Show lock button
+      btnLockToggle.classList.remove('hidden');
+
+      // Reset guidance state
+      const guidanceEditor = document.getElementById('guidance-editor') as HTMLTextAreaElement;
+      guidanceEditor.value = '';
+      clearGuidanceImagePreview();
+      originalAssignedDescription = '';
+      guidanceActiveRoomId = roomId;
+      const livePreview = document.getElementById('guidance-live-preview')!;
+      livePreview.innerHTML = '<div class="output-placeholder">在此輸入內容，即時預覽...</div>';
+
+      // Switch to code view by default
+      const guidanceView = document.getElementById('monitor-view-guidance')!;
+      guidanceView.style.display = 'none';
+      document.querySelectorAll('.monitor-view-tab').forEach((t) => {
+        t.classList.toggle('active', (t as HTMLElement).dataset.view === 'code');
+      });
+
+      if (codeEditor) {
+        codeEditor.destroy();
+        codeEditor = null;
+      }
+      if (teacherEditor) {
+        teacherEditor.destroy();
+        teacherEditor = null;
+      }
+      monitorEditor.innerHTML = '<div class="output-placeholder">等待代碼同步...</div>';
+      monitorOutput.innerHTML = '<div class="output-placeholder">等待執行結果...</div>';
+    } else {
+      // === Free practice mode: basic info + push only ===
+      selectedRoomId = null;
+      selectedStudentId = studentId;
+
+      // Destroy chat client since there's no socket room
+      chatClient?.destroy();
+      chatClient = null;
+      clearChat(messagesContainer);
+
+      monitorStudentInfo.innerHTML = `
+        <span class="monitor-student-name">${escapeHtml(studentName)}</span>
+        <span class="monitor-student-id">${escapeHtml(studentId)}</span>
+        <span class="monitor-mode-badge mode-free">自由練習</span>
+      `;
+
+      // Hide classroom-only UI
+      const btnEndClassroom = document.getElementById('btn-end-classroom')!;
+      btnEndClassroom.classList.add('hidden');
+
+      const viewTabs = document.getElementById('monitor-view-tabs')!;
+      viewTabs.style.display = 'none';
+
+      const codeView = document.getElementById('monitor-view-code')!;
+      codeView.style.display = 'none';
+
+      const guidanceView = document.getElementById('monitor-view-guidance')!;
+      guidanceView.style.display = 'none';
+
+      // Hide lock button
+      btnLockToggle.classList.add('hidden');
+
+      // Clear editors
+      if (codeEditor) {
+        codeEditor.destroy();
+        codeEditor = null;
+      }
+      if (teacherEditor) {
+        teacherEditor.destroy();
+        teacherEditor = null;
+      }
+      monitorEditor.innerHTML = '<div class="output-placeholder">此學生尚未進入課堂模式，推送題目後即可開始監控</div>';
+      monitorOutput.innerHTML = '<div class="output-placeholder">選擇課堂模式學生後，此處將顯示執行結果</div>';
+
+      // Pre-fill student ID in push input
+      const studentIdInput = document.getElementById('push-student-id') as HTMLInputElement;
+      if (studentIdInput) {
+        studentIdInput.value = studentId;
+      }
     }
-
-    // Show push bar and view tabs
-    const pushBar = document.getElementById('monitor-push-bar')!;
-    pushBar.style.display = 'flex';
-    refreshPushDropdown();
-
-    const viewTabs = document.getElementById('monitor-view-tabs')!;
-    viewTabs.style.display = 'flex';
-
-    // Reset guidance state
-    const guidanceEditor = document.getElementById('guidance-editor') as HTMLTextAreaElement;
-    guidanceEditor.value = '';
-    clearGuidanceImagePreview();
-    originalAssignedDescription = '';
-    guidanceActiveRoomId = roomId;
-    const livePreview = document.getElementById('guidance-live-preview')!;
-    livePreview.innerHTML = '<div class="output-placeholder">在此輸入內容，即時預覽...</div>';
-
-    // Switch to code view by default
-    const codeView = document.getElementById('monitor-view-code')!;
-    const guidanceView = document.getElementById('monitor-view-guidance')!;
-    codeView.style.display = '';
-    guidanceView.style.display = 'none';
-    document.querySelectorAll('.monitor-view-tab').forEach((t) => {
-      t.classList.toggle('active', (t as HTMLElement).dataset.view === 'code');
-    });
-
-    if (codeEditor) {
-      codeEditor.destroy();
-      codeEditor = null;
-    }
-    if (teacherEditor) {
-      teacherEditor.destroy();
-      teacherEditor = null;
-    }
-    monitorEditor.innerHTML = '<div class="output-placeholder">等待代碼同步...</div>';
-    monitorOutput.innerHTML = '<div class="output-placeholder">等待執行結果...</div>';
 
     renderRoster();
   }
@@ -523,28 +626,41 @@ function initDashboard(): void {
     return null;
   }
 
-  // Push button
+  // Push button - works for classroom, selected non-classroom, or manual ID
   document.getElementById('btn-push-to-student')?.addEventListener('click', async () => {
-    if (!selectedRoomId) return;
     const select = document.getElementById('push-problem-select') as HTMLSelectElement;
+    const studentIdInput = document.getElementById('push-student-id') as HTMLInputElement;
     const problemId = select.value;
     if (!problemId) return;
 
     const assigned = await fetchProblem(problemId);
     if (!assigned) return;
 
-    socket?.emit('problem:push', { roomId: selectedRoomId, problem: assigned });
+    // Determine target student
+    const targetRoomId = selectedRoomId || (selectedStudentId ? `room-${selectedStudentId}` : null);
+    if (targetRoomId) {
+      socket?.emit('problem:push', { roomId: targetRoomId, problem: assigned });
+      const targetName = selectedStudentId || allStudents.find((s) => `room-${s.studentId}` === targetRoomId)?.studentId;
+      alert(`已推送「${assigned.title}」給學生`);
+    } else {
+      const manualId = studentIdInput.value.trim();
+      if (!manualId) {
+        alert('請先選擇學生或輸入學生編號');
+        return;
+      }
+      socket?.emit('problem:push', { roomId: `room-${manualId}`, problem: assigned });
+      alert(`已推送「${assigned.title}」給學生 ${manualId}（等待學生進入課堂模式）`);
+    }
     select.value = '';
-    alert(`已推送「${assigned.title}」給學生`);
+    studentIdInput.value = '';
   });
 
   document.getElementById('btn-push-to-all')?.addEventListener('click', async () => {
-    if (!selectedRoomId) return;
     const select = document.getElementById('push-problem-select') as HTMLSelectElement;
     const problemId = select.value;
     if (!problemId) return;
 
-    if (!confirm('確定要推送給所有學生嗎？')) return;
+    if (!confirm('確定要推送給所有學生嗎？（包含離線學生）')) return;
 
     const assigned = await fetchProblem(problemId);
     if (!assigned) return;
@@ -639,6 +755,46 @@ function initDashboard(): void {
     }, 200);
   });
 
+  // End classroom button
+  const btnEndClassroom = document.getElementById('btn-end-classroom')!;
+  btnEndClassroom.addEventListener('click', () => {
+    if (!selectedRoomId) return;
+    if (!confirm('確定要結束課堂模式嗎？學生將返回自由練習模式。')) return;
+
+    socket?.emit('classroom:end', { roomId: selectedRoomId });
+
+    // Clean up UI
+    btnEndClassroom.classList.add('hidden');
+    if (codeEditor) {
+      codeEditor.destroy();
+      codeEditor = null;
+    }
+    if (teacherEditor) {
+      teacherEditor.destroy();
+      teacherEditor = null;
+    }
+    isLocked = false;
+    isExecuting = false;
+    setLockButtonsVisible(false);
+    btnLockToggle.classList.add('hidden');
+    btnRunLocked.disabled = false;
+    btnRunLocked.textContent = '▶ Run';
+
+    monitorEditor.innerHTML = '<div class="output-placeholder">等待代碼同步...</div>';
+    monitorOutput.innerHTML = '<div class="output-placeholder">選擇學生後，此處將顯示執行結果</div>';
+
+    const viewTabs = document.getElementById('monitor-view-tabs')!;
+    viewTabs.style.display = 'none';
+
+    const codeView = document.getElementById('monitor-view-code')!;
+    codeView.style.display = 'none';
+
+    selectedRoomId = null;
+    selectedStudentId = null;
+    monitorStudentInfo.innerHTML = '<span class="monitor-placeholder">請選擇一名學生查看代碼</span>';
+    renderRoster();
+  });
+
   // ---- Lock & Push Socket Listeners ----
 
   socket?.on('editor:locked', (data) => {
@@ -706,9 +862,33 @@ function initDashboard(): void {
     });
   });
 
+  // Listen for student self-exiting classroom
+  socket?.on('classroom:exited', () => {
+    // roster:update will fire next and handle the UI transition
+  });
+
   // Roster events
   socket?.on('roster:update', (data) => {
     rosterEntries = data.students;
+
+    // If the currently selected non-classroom student just entered classroom mode,
+    // auto-upgrade to full monitoring
+    if (selectedStudentId && !selectedRoomId) {
+      const classroomEntry = data.students.find((e) => e.studentId === selectedStudentId);
+      if (classroomEntry) {
+        selectStudent(selectedStudentId, classroomEntry.roomId, true);
+        return;
+      }
+    }
+
+    // If the currently selected classroom student left classroom mode,
+    // downgrade to basic info view
+    if (selectedRoomId && !data.students.find((e) => e.roomId === selectedRoomId)) {
+      const studentId = selectedRoomId.replace('room-', '');
+      selectStudent(studentId, selectedRoomId, false);
+      return;
+    }
+
     renderRoster();
   });
 
@@ -748,6 +928,8 @@ function initDashboard(): void {
         preRegOk.classList.remove('hidden');
         studentIdInput.value = '';
         nameInput.value = '';
+        // Refresh roster with the new student
+        fetchAllStudents();
       } else {
         preRegError.textContent = data.error || '註冊失敗';
         preRegError.classList.remove('hidden');
@@ -982,6 +1164,7 @@ function initDashboard(): void {
     socket?.disconnect();
     socket = null;
     selectedRoomId = null;
+    selectedStudentId = null;
     codeEditor?.destroy();
     codeEditor = null;
     teacherEditor?.destroy();
@@ -989,6 +1172,7 @@ function initDashboard(): void {
     isLocked = false;
     isExecuting = false;
     rosterEntries = [];
+    allStudents = [];
     initAuth();
   });
 

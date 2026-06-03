@@ -52,6 +52,11 @@ let activeStudentTab: 'output' | 'chat' = 'output';
 let isLockedByTeacher = false;
 let preLockCode = '';
 
+// Dual-mode state
+let inClassroom = false;
+let classroomPollTimer: ReturnType<typeof setInterval> | null = null;
+let autoSaveDebounce: ReturnType<typeof setTimeout> | null = null;
+
 /* ---- Theme ---- */
 
 function loadTheme(): void {
@@ -94,6 +99,7 @@ function renderLayout(): string {
     <nav class="code-nav">
       <a href="./">← 返回個人主頁</a>
       <span class="code-nav-title">Python 程式設計實驗室</span>
+      <span class="code-nav-mode hidden" id="nav-mode-badge">自由練習</span>
       <div class="code-nav-right">
         <span class="code-nav-user" id="nav-user-name"></span>
         <button class="btn-logout" id="btn-logout" title="退出">退出</button>
@@ -104,6 +110,10 @@ function renderLayout(): string {
         </div>
       </div>
     </nav>
+    <div class="classroom-banner hidden" id="classroom-banner">
+      <span>課堂模式中</span>
+      <button class="btn-exit-classroom" id="btn-exit-classroom">退出課堂</button>
+    </div>
     <div class="code-layout" id="code-layout">
       <div class="problem-panel" id="problem-panel"></div>
       <div class="resize-handle-v" id="resize-handle-v"></div>
@@ -263,9 +273,7 @@ function initSetPinStep(studentId: string, name: string): void {
       const result = await CodeSocket.setPin({ studentId, pin });
       currentStudentName = result.name;
       currentStudentId = result.studentId;
-      socket = new CodeSocket();
-      const sessionInfo = await socket.join(result);
-      await initLab(sessionInfo);
+      await initLabFreePractice();
     } catch (err) {
       btn.disabled = false;
       hideLoading();
@@ -541,9 +549,7 @@ function initLoginStep(studentId: string, name: string): void {
 
       currentStudentName = result.student.name;
       currentStudentId = result.student.studentId;
-      socket = new CodeSocket();
-      const sessionInfo = await socket.join(result.student);
-      await initLab(sessionInfo);
+      await initLabFreePractice();
     } catch (err) {
       btn.disabled = false;
       hideLoading();
@@ -606,9 +612,7 @@ function initRegisterStep(studentId: string): void {
       const result = await CodeSocket.registerStudent({ studentId, name, pin });
       currentStudentName = result.name;
       currentStudentId = result.studentId;
-      socket = new CodeSocket();
-      const sessionInfo = await socket.join(result);
-      await initLab(sessionInfo);
+      await initLabFreePractice();
     } catch (err) {
       btn.disabled = false;
       hideLoading();
@@ -628,6 +632,26 @@ function hideError(): void {
 }
 
 function handleLogout(): void {
+  // Auto-save current code if in free practice mode
+  if (!inClassroom && currentStudentId && currentProblem?.id && editor) {
+    const code = editor.getCode();
+    if (code) {
+      CodeSocket.saveCode(currentStudentId, currentProblem.id, code).catch(() => {});
+    }
+  }
+
+  // Clear poll timer
+  if (classroomPollTimer) {
+    clearInterval(classroomPollTimer);
+    classroomPollTimer = null;
+  }
+
+  // Clear auto-save debounce
+  if (autoSaveDebounce) {
+    clearTimeout(autoSaveDebounce);
+    autoSaveDebounce = null;
+  }
+
   if (chatClient) {
     chatClient.destroy();
     chatClient = null;
@@ -648,6 +672,7 @@ function handleLogout(): void {
   problemsById = {};
   problemIds = [];
   currentProblem = fallbackDefault;
+  inClassroom = false;
   initStudentIdStep();
 }
 
@@ -731,18 +756,340 @@ function switchToProblem(problem: CodeProblem): void {
   const outputPanel = document.getElementById('output-panel');
   if (!problemPanel || !outputPanel) return;
 
+  // Auto-save current code in free practice mode before switching
+  if (!inClassroom && currentProblem?.id && editor) {
+    const code = editor.getCode();
+    if (code) {
+      CodeSocket.saveCode(currentStudentId, currentProblem.id, code).catch(() => {});
+    }
+  }
+
   // Clear any active guidance before switching
   clearGuidance();
 
   currentProblem = problem;
+
+  // In free practice mode, try to load saved code; otherwise use starter code
+  let initialCode = problem.starterCode;
+  if (!inClassroom) {
+    CodeSocket.getSavedCode(currentStudentId, problem.id).then((saved) => {
+      if (saved && saved.code) {
+        editor.setCode(saved.code);
+        session.updateCode(saved.code);
+      } else {
+        editor.setCode(problem.starterCode);
+        session.updateCode(problem.starterCode);
+      }
+    }).catch(() => {
+      editor.setCode(problem.starterCode);
+      session.updateCode(problem.starterCode);
+    });
+  } else {
+    editor.setCode(problem.starterCode);
+    session.updateCode(problem.starterCode);
+  }
+
   problemPanel.innerHTML = renderProblem(problem);
-  editor.setCode(problem.starterCode);
-  session.updateCode(problem.starterCode);
   outputPanel.innerHTML = '<div class="output-placeholder">Ready. Press Run to execute.</div>';
   populateProblemSelect();
 }
 
-/* ---- Init ---- */
+/* ---- Free Practice Mode ---- */
+
+async function initLabFreePractice(): Promise<void> {
+  inClassroom = false;
+  app.innerHTML = renderLayout();
+
+  // Show mode badge
+  const modeBadge = document.getElementById('nav-mode-badge')!;
+  modeBadge.classList.remove('hidden');
+  modeBadge.textContent = '自由練習';
+  modeBadge.className = 'code-nav-mode mode-free-practice';
+
+  // Show student name in nav
+  const navUserName = document.getElementById('nav-user-name')!;
+  navUserName.textContent = currentStudentName;
+
+  // Wire logout button
+  document.getElementById('btn-logout')!.addEventListener('click', handleLogout);
+
+  // Offline connection status
+  const connDot = document.getElementById('conn-dot')!;
+  const connText = document.getElementById('conn-text')!;
+  connDot.className = 'status-dot status-error';
+  connText.textContent = 'Offline';
+
+  // Load problems from server
+  const problemPanel = document.getElementById('problem-panel')!;
+  const editorPanel = document.getElementById('editor-panel')!;
+  const outputPanel = document.getElementById('output-panel')!;
+  const btnRun = document.getElementById('btn-run')! as HTMLButtonElement;
+  const btnTests = document.getElementById('btn-tests')! as HTMLButtonElement;
+  const problemSelect = document.getElementById('problem-select')! as HTMLSelectElement;
+  const statusText = document.getElementById('status-text')!;
+  const statusDot = document.querySelector('.status-dot')!;
+
+  await loadProblemsFromServer();
+  problemPanel.innerHTML = renderProblem(currentProblem);
+
+  initResizeHandles();
+
+  session = new CodeSession(
+    { roomId: `room-${currentStudentId}`, role: 'student', userId: 'local' },
+    currentProblem.starterCode
+  );
+
+  editor = new CodeEditor(editorPanel, currentProblem.starterCode, false, isLightTheme());
+
+  // Try to load saved code for the current problem
+  try {
+    const saved = await CodeSocket.getSavedCode(currentStudentId, currentProblem.id);
+    if (saved && saved.code) {
+      editor.setCode(saved.code);
+      session.updateCode(saved.code);
+    }
+  } catch { /* no saved code */ }
+
+  // Auto-save on editor change (debounced 2s)
+  editor.onChange((code) => {
+    if (isApplyingRemote) return;
+    session.updateCode(code);
+
+    if (autoSaveDebounce) clearTimeout(autoSaveDebounce);
+    autoSaveDebounce = setTimeout(() => {
+      CodeSocket.saveCode(currentStudentId, currentProblem.id, code).catch(() => {});
+    }, 2000);
+  });
+
+  // Theme toggle
+  updateThemeButton();
+  document.getElementById('btn-theme-toggle')!.addEventListener('click', toggleTheme);
+
+  // Engine selector (same as initLab)
+  const engineSelect = document.getElementById('engine-select') as HTMLSelectElement;
+  const turtleWrapper = document.getElementById('turtle-canvas-wrapper')!;
+
+  const savedEngine = localStorage.getItem(ENGINE_KEY) as EngineType | null;
+  if (savedEngine === 'skulpt' || savedEngine === 'pyodide' || savedEngine === 'pyodide-widget') {
+    currentEngine = savedEngine;
+    engineSelect.value = savedEngine;
+  }
+
+  function createExecutorLocal(engine: EngineType): void {
+    executor?.destroy();
+    turtleWrapper.classList.add('hidden');
+
+    if (engine === 'skulpt') {
+      turtleWrapper.classList.remove('hidden');
+      try {
+        if (!(Sk as any).TurtleGraphics) {
+          (Sk as any).TurtleGraphics = {};
+        }
+        (Sk as any).TurtleGraphics.target = 'turtle-canvas';
+        executor = new SkulptExecutor('turtle-canvas');
+      } catch (err: any) {
+        console.error('Skulpt init failed:', err);
+        outputPanel.innerHTML = `<div class="output-stderr">Failed to start Skulpt: ${escapeHtml(err.message)}</div>`;
+        engineSelect.value = 'pyodide';
+        localStorage.setItem(ENGINE_KEY, 'pyodide');
+        currentEngine = 'pyodide';
+        executor = new CodeExecutor();
+      }
+    } else if (engine === 'pyodide-widget') {
+      executor = new CodeWidgetExecutor();
+      (executor as CodeWidgetExecutor).onCallbackResult((cbResult) => {
+        if (cbResult.widgets && cbResult.widgets.length > 0) {
+          (executor as CodeWidgetExecutor).renderCallbackWidgets(cbResult.widgets);
+        }
+        const cbContainer = document.getElementById('widget-callback-output');
+        if (cbContainer) {
+          if (cbResult.stdout.trim()) {
+            cbContainer.innerHTML += `<div class="output-stdout">${escapeHtml(cbResult.stdout.trim())}</div>`;
+          }
+          if (cbResult.stderr.trim()) {
+            cbContainer.innerHTML += `<div class="output-stderr">${escapeHtml(cbResult.stderr.trim())}</div>`;
+          }
+          cbContainer.scrollTop = cbContainer.scrollHeight;
+        }
+      });
+    } else {
+      executor = new CodeExecutor();
+    }
+
+    currentEngine = engine;
+    localStorage.setItem(ENGINE_KEY, engine);
+
+    executor.onStatusChange((status: ExecutionStatus) => {
+      updateStatusUI(status, statusText, statusDot, btnRun, btnTests, executor.getStatusMessage());
+    });
+
+    outputPanel.innerHTML = renderOutputLoading();
+    executor.load().then(() => {
+      outputPanel.innerHTML = '<div class="output-placeholder">Ready. Press Run to execute.</div>';
+    }).catch((err) => {
+      console.error(`${engine} failed to load:`, err);
+      outputPanel.innerHTML = `<div class="output-stderr">Failed to load ${engine}: ${escapeHtml(err.message)}</div>`;
+    });
+  }
+
+  createExecutorLocal(currentEngine);
+
+  engineSelect.addEventListener('change', () => {
+    const engine = engineSelect.value as EngineType;
+    if (engine !== currentEngine) {
+      createExecutorLocal(engine);
+    }
+  });
+
+  async function handleRunLocal(): Promise<void> {
+    if (!executor.isReady()) return;
+    outputPanel.innerHTML = renderOutputLoading();
+    const code = editor.getCode();
+    if (executor instanceof CodeWidgetExecutor) {
+      const result = await executor.execute(code);
+      executor.renderWidgetOutput(outputPanel, result);
+    } else {
+      const result = await executor.execute(code);
+      outputPanel.innerHTML = renderOutput(result);
+    }
+  }
+
+  async function handleTestsLocal(): Promise<void> {
+    if (!executor.isReady()) return;
+    outputPanel.innerHTML = renderOutputLoading();
+    const code = editor.getCode();
+    if (executor instanceof CodeWidgetExecutor) {
+      const result = await executor.execute(code);
+      executor.renderWidgetOutput(outputPanel, result);
+    } else {
+      const result = await executor.runTests(code, currentProblem.testCases);
+      outputPanel.innerHTML = renderOutput(result);
+    }
+  }
+
+  btnRun.addEventListener('click', handleRunLocal);
+  btnTests.addEventListener('click', handleTestsLocal);
+
+  // Populate problem dropdown
+  populateProblemSelect();
+
+  // Refresh problem list on focus
+  problemSelect.addEventListener('focus', async () => {
+    try {
+      const res = await fetch('/api/problems');
+      if (res.ok) {
+        const list: { id: string; title: string; difficulty: string }[] = await res.json();
+        const newIds: string[] = [];
+        for (const meta of list) {
+          newIds.push(meta.id);
+          if (!problemsById[meta.id]) {
+            problemsById[meta.id] = {
+              id: meta.id, title: meta.title,
+              difficulty: meta.difficulty as CodeProblem['difficulty'],
+              description: '', examples: [], constraints: [],
+              starterCode: '', testCases: [],
+            };
+          }
+        }
+        problemIds = newIds;
+        populateProblemSelect();
+      }
+    } catch { /* keep current list */ }
+  });
+
+  problemSelect.addEventListener('change', async () => {
+    const id = problemSelect.value;
+    if (!id || id === currentProblem?.id) return;
+    const problem = await loadProblemById(id);
+    if (problem) {
+      switchToProblem(problem);
+      populateProblemSelect();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      handleRunLocal();
+    }
+  });
+
+  // Start classroom poll timer (10s interval)
+  classroomPollTimer = setInterval(async () => {
+    try {
+      const status = await CodeSocket.getClassroomStatus(currentStudentId);
+      if (status.classroom && status.problem) {
+        enterClassroom(status.problem);
+      }
+    } catch { /* ignore polling errors */ }
+  }, 10000);
+}
+
+/* ---- Classroom Mode ---- */
+
+async function enterClassroom(assignedProblem: AssignedProblem): Promise<void> {
+  // Clear poll timer
+  if (classroomPollTimer) {
+    clearInterval(classroomPollTimer);
+    classroomPollTimer = null;
+  }
+
+  // Auto-save current code
+  if (editor) {
+    const code = editor.getCode();
+    if (code) {
+      try {
+        await CodeSocket.saveCode(currentStudentId, currentProblem?.id || 'unknown', code);
+      } catch { /* ignore */ }
+    }
+  }
+
+  // Clear auto-save debounce
+  if (autoSaveDebounce) {
+    clearTimeout(autoSaveDebounce);
+    autoSaveDebounce = null;
+  }
+
+  showNotification('教師正在推送題目');
+
+  // Destroy existing executor and editor
+  if (executor) {
+    executor.destroy();
+  }
+  if (editor) {
+    editor.destroy();
+  }
+
+  // Create socket and join in classroom mode
+  socket = new CodeSocket();
+  const sessionInfo = await socket.join(
+    { studentId: currentStudentId, name: currentStudentName },
+    'classroom'
+  );
+
+  // Build the assigned problem for local use
+  const codeProblem: CodeProblem = {
+    id: assignedProblem.id,
+    title: assignedProblem.title,
+    difficulty: assignedProblem.difficulty,
+    description: assignedProblem.description,
+    examples: assignedProblem.examples || [],
+    constraints: assignedProblem.constraints || [],
+    starterCode: assignedProblem.starterCode,
+    testCases: assignedProblem.testCases || [],
+  };
+
+  if (!problemsById[codeProblem.id]) {
+    problemsById[codeProblem.id] = codeProblem;
+    problemIds.push(codeProblem.id);
+  }
+
+  currentProblem = codeProblem;
+
+  await initLab(sessionInfo);
+}
+
+/* ---- Init (Classroom) ---- */
 
 async function initLab(sessionInfo: {
   roomId: string;
@@ -750,7 +1097,32 @@ async function initLab(sessionInfo: {
   studentName: string;
   studentId: string;
 }): Promise<void> {
+  inClassroom = true;
   app.innerHTML = renderLayout();
+
+  // Show classroom banner
+  const classroomBanner = document.getElementById('classroom-banner')!;
+  classroomBanner.classList.remove('hidden');
+
+  // Wire exit classroom button
+  document.getElementById('btn-exit-classroom')!.addEventListener('click', () => {
+    const rawSock = socket.getRawSocket();
+    if (rawSock) {
+      rawSock.emit('classroom:leave');
+    }
+  });
+
+  // Show mode badge
+  const modeBadge = document.getElementById('nav-mode-badge')!;
+  modeBadge.classList.remove('hidden');
+  modeBadge.textContent = '課堂模式';
+  modeBadge.className = 'code-nav-mode mode-classroom';
+
+  // Listen for classroom:exited
+  socket.on('classroom:exited', (data: { reason: string }) => {
+    showNotification(data.reason || '課堂已結束');
+    exitClassroomToFreePractice();
+  });
 
   // Show student name in nav
   const navUserName = document.getElementById('nav-user-name')!;
@@ -808,7 +1180,7 @@ async function initLab(sessionInfo: {
   function updateConnStatus(): void {
     if (socket.isConnected()) {
       connDot.className = 'status-dot status-ready';
-      connText.textContent = 'Connected';
+      connText.textContent = 'Connected - Classroom';
     } else {
       connDot.className = 'status-dot status-error';
       connText.textContent = 'Disconnected';
@@ -1156,6 +1528,60 @@ async function initLab(sessionInfo: {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
       handleRun();
+    }
+  });
+}
+
+/* ---- Transition back to Free Practice from Classroom ---- */
+
+function exitClassroomToFreePractice(): void {
+  inClassroom = false;
+
+  // Clean up socket and chat
+  if (chatClient) {
+    chatClient.destroy();
+    chatClient = null;
+  }
+  socket?.disconnect();
+  socket = null!;
+
+  // Save current state
+  const lastCode = editor?.getCode() || '';
+  const lastProblemId = currentProblem?.id || 'unknown';
+
+  // Destroy editor and executor
+  if (executor) {
+    executor.destroy();
+  }
+  if (editor) {
+    editor.destroy();
+  }
+
+  // Re-init free practice mode
+  initLabFreePractice().then(() => {
+    // Try to restore the last code after layout is set up
+    if (lastCode) {
+      editor.setCode(lastCode);
+      session.updateCode(lastCode);
+    }
+
+    // Hide classroom banner
+    const banner = document.getElementById('classroom-banner');
+    if (banner) banner.classList.add('hidden');
+
+    // Update mode badge
+    const modeBadge = document.getElementById('nav-mode-badge');
+    if (modeBadge) {
+      modeBadge.textContent = '自由練習';
+      modeBadge.className = 'code-nav-mode mode-free-practice';
+    }
+
+    // Update connection status
+    const connDot = document.getElementById('conn-dot');
+    const connText = document.getElementById('conn-text');
+    if (connDot && connText) {
+      connDot.className = 'status-dot status-error';
+      connText.textContent = 'Offline';
     }
   });
 }

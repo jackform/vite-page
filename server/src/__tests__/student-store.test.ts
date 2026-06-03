@@ -188,4 +188,23 @@ describe('student-store', () => {
       expect(list).toContain(testId2);
     });
   });
+
+  describe('listStudentAccounts', () => {
+    it('returns full student account objects', () => {
+      studentStore.createStudent({ studentId: testId, name: 'Alice', pin: '1111' });
+      const accounts = studentStore.listStudentAccounts();
+      const alice = accounts.find((a) => a.studentId === testId);
+      expect(alice).toBeDefined();
+      expect(alice!.name).toBe('Alice');
+      expect(alice!.studentId).toBe(testId);
+    });
+
+    it('returns empty array when no students exist', () => {
+      // Cleanup any existing students
+      if (studentStore.hasStudent(testId)) studentStore.deleteStudent(testId);
+      if (studentStore.hasStudent(testId2)) studentStore.deleteStudent(testId2);
+      const accounts = studentStore.listStudentAccounts();
+      expect(Array.isArray(accounts)).toBe(true);
+    });
+  });
 });
