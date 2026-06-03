@@ -29,18 +29,19 @@ npx playwright test --headed --debug                      # E2E with browser vis
 
 **Vitest** (unit/integration): Config in `vitest.config.ts`. Uses `globals: true`, `environment: 'node'` by default. Browser tests use per-file `@vitest-environment jsdom` comments. Test files follow `*.test.ts` pattern.
 
-Frontend unit tests live in `src/__tests__/`:
-- `code-editor.test.ts` — CodeMirror editor wrapper (jsdom environment): instantiation, getCode/setCode, onChange debouncing, theme switching, setReadOnly
-- `lock-client.test.ts` — mock-socket-based tests for lock/unlock event handling logic
+Frontend unit tests live in `src/__tests__/` and `src/chat/__tests__/`:
+- `src/__tests__/` — tests for CodeMirror editor wrapper, lock client, code session, code problems, code output, problem manager, teacher logic, main/poster pages, and shared utilities. Uses jsdom environment where DOM interaction is needed.
+- `src/chat/__tests__/` — tests for ChatClient (event emission/listening/cleanup) and ChatUI (tab switching, message rendering, history, empty state).
+- `src/code-test-utils.ts` — shared test utilities extracted for reuse across frontend tests.
 
 Server unit tests live in `server/src/__tests__/`:
-- `chat-store.test.ts` — message CRUD, per-room isolation
-- `chat-handlers.test.ts` — validation rules, message routing
-- `lock-handlers.test.ts` — lock/unlock event handling
-- `room-manager.test.ts` — student session state management
-- `guidance.test.ts` — guidance push validation (size limits, data URL checks)
+- `handlers-integration.test.ts` — comprehensive integration tests for Socket.io event handlers.
+- `chat-store.test.ts` / `chat-handlers.test.ts` — message CRUD, per-room isolation, validation rules.
+- `lock-handlers.test.ts` / `room-manager.test.ts` — lock/unlock handling, student session management.
+- `guidance.test.ts` / `auth.test.ts` / `problem-store.test.ts` — guidance validation, auth, problem CRUD.
+- `test-utils.ts` — shared server test helpers.
 
-**Playwright** (E2E): Config in `playwright.config.ts`. Tests live in `tests/`. E2E test files: `chat.e2e.ts` (bidirectional messaging), `lock-and-push.e2e.ts` (teacher lock/execution relay), `guidance.e2e.ts` (teacher guidance push). Web server config auto-starts both the backend (port 3001) and frontend (port 5173) dev servers with `reuseExistingServer: true`.
+**Playwright** (E2E): Config in `playwright.config.ts`. Tests live in `tests/`. E2E test files: `chat.e2e.ts` (bidirectional messaging), `lock-and-push.e2e.ts` (teacher lock/execution relay), `guidance.e2e.ts` (teacher guidance push). `tests/fixtures/` contains shared E2E test fixtures. Web server config auto-starts both the backend (port 3001) and frontend (port 5173) dev servers with `reuseExistingServer: true`.
 
 ## Architecture
 
@@ -70,8 +71,10 @@ Node.js + Express + Socket.io server that powers the real-time student-teacher s
 
 | Event | Direction | Purpose |
 |---|---|---|
-| `student:register` | Student → Server | Join with `{ name, studentId }` |
-| `session:registered` | Server → Student | Confirmed with `{ roomId, userId }` |
+| `student:register` | Student → Server | (Legacy) Join with `{ name, studentId }` |
+| `student:join` | Student → Server | Join after REST auth with `{ name, studentId }` |
+| `session:registered` | Server → Student | Confirmed with `{ roomId, userId, studentName, studentId }` |
+| `kicked` | Server → Student | Kicked on relogin `{ reason }` |
 | `code:update` | Student → Server | Debounced code change |
 | `code:broadcast` | Server → Teacher | Pushed to subscribed teachers |
 | `execution:result` | Student → Server | After running code |
@@ -136,17 +139,52 @@ Teacher can push rich markdown guidance (with embedded images) to a student. The
 
 **E2E tests:** `tests/guidance.e2e.ts`.
 
+### Student Account System (`server/src/student-store.ts`, `src/code.ts`)
+
+4-digit PIN-based authentication for students. Teacher can pre-register students (no PIN) who set their PIN on first login. Same studentId relogin kicks the old connection.
+
+**Server side:**
+- `server/src/student-store.ts` — JSON file storage in `server/data/students/` (same pattern as `problem-store.ts`). Functions: `listStudents()`, `getStudent(id)`, `createStudent(data)` (with optional PIN, uses bcryptjs), `deleteStudent(id)`, `hasStudent(id)`, `verifyPin(id, pin)`, `setPin(id, pin)`.
+- `server/src/__tests__/student-store.test.ts` — 20 tests for CRUD, PIN verification, setPin, edge cases.
+
+**REST API (student):**
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/api/students` | List all student IDs |
+| `GET` | `/api/students/:id` | Check if exists → `{ exists, name?, hasPin? }` |
+| `POST` | `/api/students` | Teacher pre-registration `{ studentId, name }` (no PIN) |
+| `POST` | `/api/students/register` | Student self-registration `{ studentId, name, pin }` |
+| `POST` | `/api/students/verify` | Verify PIN `{ studentId, pin }` → `{ success, student? }` |
+| `POST` | `/api/students/set-pin` | First-time PIN setup `{ studentId, pin }` |
+| `DELETE` | `/api/students/:id` | Delete student |
+
+**Frontend flow (`src/code.ts`):**
+1. Student enters studentId → `GET /api/students/:id`
+2. If exists + hasPin → login step (enter 4-digit PIN) → `POST /api/students/verify`
+3. If exists + !hasPin → set-PIN step (teacher pre-registered) → `POST /api/students/set-pin`
+4. If not exists → register step (name + PIN + confirm PIN) → `POST /api/students/register`
+5. On auth success → `CodeSocket.join()` → `student:join` socket event
+
+**Kick-on-relogin:** `RoomManager.studentIdToSocket` maps studentId → socketId. On `student:join`, if an existing socket is found, it receives `kicked` event and disconnects.
+
+**Teacher pre-registration:** Teacher dashboard roster sidebar has a "預先註冊學生" form (studentId + name → `POST /api/students`).
+
 ### Coding lab page (`code.html` → `src/code.ts`)
 
 A LeetCode-style Python coding platform with CodeMirror 6 editor, Pyodide-based Python execution in a Web Worker, real-time code sync to backend, and a test runner. Chinese-localized (zh-HK), dark/light theme.
 
-**Lifecycle:** `DOMContentLoaded` → renders registration overlay (name + studentId) → on submit, `CodeSocket.register()` connects to backend via Socket.io → on success, loads problem list from `GET /api/problems`, renders editor layout, mounts CodeMirror, loads Pyodide, wires Run/Tests buttons.
+**Lifecycle:** `DOMContentLoaded` → renders studentId entry → REST check `GET /api/students/:id` → login (PIN) / set-PIN (pre-registered) / register (name + PIN) → on auth success, `CodeSocket.join()` emits `student:join` via Socket.io → loads problem list, renders editor layout with student name + 退出 button, mounts CodeMirror, loads Pyodide, wires Run/Tests buttons.
+
+**Shared frontend utilities:**
+- `src/utils.ts` — general helper functions (DOM manipulation, formatting).
+- `src/data.ts` — static data and constants used across pages.
 
 **Source modules (all prefixed `code-`):**
 - `src/code-types.ts` — types for CodeProblem, TestCase, ExecutionResult, SessionConfig, etc.
 - `src/code-problems.ts` — hardcoded fallback problems, used only when the API is unreachable.
 - `src/code-session.ts` — `CodeSession` class wraps local code state and syncs to server via `CodeSocket`. `updateCode()` sends `code:update` over socket. Student does NOT listen to `code:broadcast` (only teacher does).
-- `src/code-socket.ts` — Socket.io client wrapper. `register(identity)` connects and waits for `session:registered`. Generic `on`/`off` methods for typed event listening (used for `problem:assigned`). Uses `VITE_SERVER_URL` env var or falls back to `window.location.origin`.
+- `src/code-socket.ts` — Socket.io client wrapper with REST-based PIN auth: static methods `checkStudentId()`, `registerStudent()`, `loginStudent()`, `setPin()`; instance method `join(authResult)` connects socket and emits `student:join`. Legacy `register(identity)` kept for backward compat. Generic `on`/`off` for typed event listening. Uses `VITE_SERVER_URL` env var or falls back to `window.location.origin`.
 - `src/code-editor.ts` — CodeMirror 6 wrapper with Python mode, indentWithTab. Exposes `getCode()`, `setCode()`, `onChange()` (debounced 300ms), `setTheme(isLight)`. Constructor accepts optional `readOnly` and `isLight` booleans. Theme is switched dynamically via a `Compartment` — no editor re-creation needed. Also used by `ProblemManager` in teacher page.
 - `src/code-executor.ts` — manages Pyodide Web Worker. Handles execute and runTests with timeouts; on timeout terminates and auto-recreates the worker.
 - `src/code-skulpt-executor.ts` — `SkulptExecutor`: alternative Python executor using the Skulpt npm package. Runs Python (mostly 2.x) directly in the main thread with built-in turtle graphics support (`import turtle` draws to a Canvas). Handles Skulpt Suspensions from animated drawing operations.
@@ -215,6 +253,7 @@ Design proposals — some have since been implemented:
 
 ## Reference docs
 
+- `GUIDE.md` — detailed user guide for the coding lab and teacher dashboard (Chinese, 43KB).
 - `DEPLOY.md` — detailed deployment instructions for both frontend (GitHub Pages) and backend.
 - `WEBTKINTER_GAPS.md` — compatibility gaps between webtkinter and standard tkinter (widget parameters, unsupported features).
 - `adapted/` — standalone Python helper scripts (`message_encryptor.py`, `music_converter.py`) ported from a previous project, unrelated to the main app.
