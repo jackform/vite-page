@@ -321,7 +321,7 @@ function initDashboard(): void {
   fetchAllStudents();
 
   // Periodically refresh student list for online/offline status
-  setInterval(fetchAllStudents, 10000);
+  setInterval(fetchAllStudents, 5000);
 
   /* ---- Chat ---- */
 

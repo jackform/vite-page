@@ -26,7 +26,7 @@ export class RoomManager {
   /** Last-seen timestamps for heartbeat tracking (free-practice students). */
   private studentLastSeen: Map<string, number> = new Map();
   /** Heartbeat threshold in ms: student is "online" if seen within this window. */
-  private static readonly HEARTBEAT_WINDOW = 15000;
+  private static readonly HEARTBEAT_WINDOW = 10000;
 
   /** Get the socket ID for a given studentId (for kick-on-relogin). */
   getSocketByStudentId(studentId: string): string | undefined {

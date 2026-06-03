@@ -1014,15 +1014,17 @@ async function initLabFreePractice(): Promise<void> {
     }
   });
 
-  // Start classroom poll timer (10s interval)
-  classroomPollTimer = setInterval(async () => {
+  // Start classroom poll timer (3s interval, with immediate first poll)
+  const pollClassroom = async () => {
     try {
       const status = await CodeSocket.getClassroomStatus(currentStudentId);
       if (status.classroom && status.problem) {
         enterClassroom(status.problem);
       }
     } catch { /* ignore polling errors */ }
-  }, 10000);
+  };
+  pollClassroom();
+  classroomPollTimer = setInterval(pollClassroom, 3000);
 }
 
 /* ---- Classroom Mode ---- */
