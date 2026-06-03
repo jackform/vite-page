@@ -267,6 +267,20 @@ export function registerHandlers(
     io.to(data.roomId).emit('guidance:update', { description: data.description });
   });
 
+  socket.on('guidance:push-all', (data: { description: string }) => {
+    if (!socket.data.isTeacher) return;
+
+    if (typeof data.description !== 'string' || !data.description.trim()) return;
+
+    // Validate: description max 5_000_000 chars
+    if (data.description.length > 5_000_000) return;
+
+    const roster = roomManager.getRoster();
+    for (const entry of roster) {
+      io.to(entry.roomId).emit('guidance:update', { description: data.description });
+    }
+  });
+
   // ---- Chat ----
 
   registerChatHandlers(io, socket, chatStore, teacherWatching, roomManager);

@@ -643,6 +643,13 @@ function initDashboard(): void {
     const targetRoomId = selectedRoomId || (selectedStudentId ? `room-${selectedStudentId}` : null);
     if (targetRoomId) {
       socket?.emit('problem:push', { roomId: targetRoomId, problem: assigned });
+
+      // Auto-push guidance content if teacher has edited it
+      const guidanceEditor = document.getElementById('guidance-editor') as HTMLTextAreaElement;
+      if (guidanceEditor && guidanceEditor.value.trim()) {
+        socket?.emit('guidance:push', { roomId: targetRoomId, description: guidanceEditor.value });
+      }
+
       const targetName = selectedStudentId || allStudents.find((s) => `room-${s.studentId}` === targetRoomId)?.studentId;
       alert(`已推送「${assigned.title}」給學生`);
     } else {
@@ -669,6 +676,13 @@ function initDashboard(): void {
     if (!assigned) return;
 
     socket?.emit('problem:push-all', { problem: assigned });
+
+    // Auto-push guidance content to all students if teacher has edited it
+    const guidanceEditor = document.getElementById('guidance-editor') as HTMLTextAreaElement;
+    if (guidanceEditor && guidanceEditor.value.trim()) {
+      socket?.emit('guidance:push-all', { description: guidanceEditor.value });
+    }
+
     select.value = '';
     alert(`已推送「${assigned.title}」給所有學生`);
   });

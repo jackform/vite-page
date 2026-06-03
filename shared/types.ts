@@ -198,6 +198,7 @@ export interface ClientToServerEvents {
   'execution:request': (data: ExecutionRelayRequest) => void;
   'execution:relay-result': (data: RelayExecutionResult) => void;
   'guidance:push': (data: { roomId: string; description: string }) => void;
+  'guidance:push-all': (data: { description: string }) => void;
   'classroom:end': (data: { roomId: string }) => void;
   'classroom:leave': () => void;
 }
