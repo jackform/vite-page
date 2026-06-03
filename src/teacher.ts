@@ -480,6 +480,16 @@ function initDashboard(): void {
       // === Classroom mode: full monitoring ===
       selectedRoomId = roomId;
       selectedStudentId = null;
+
+      // Reset guidance state BEFORE subscribing to the room.
+      // room:subscribe triggers the server to send cached state (including
+      // problem:assigned), which the handler needs guidanceActiveRoomId for.
+      const guidanceEditor = document.getElementById('guidance-editor') as HTMLTextAreaElement;
+      guidanceEditor.value = '';
+      clearGuidanceImagePreview();
+      originalAssignedDescription = '';
+      guidanceActiveRoomId = roomId;
+
       socket?.emit('room:subscribe', { roomId });
 
       // Initialize chat for this student
@@ -504,13 +514,6 @@ function initDashboard(): void {
 
       // Show lock button
       btnLockToggle.classList.remove('hidden');
-
-      // Reset guidance state
-      const guidanceEditor = document.getElementById('guidance-editor') as HTMLTextAreaElement;
-      guidanceEditor.value = '';
-      clearGuidanceImagePreview();
-      originalAssignedDescription = '';
-      guidanceActiveRoomId = roomId;
       const livePreview = document.getElementById('guidance-live-preview')!;
       livePreview.innerHTML = '<div class="output-placeholder">在此輸入內容，即時預覽...</div>';
 

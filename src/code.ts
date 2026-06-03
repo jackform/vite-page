@@ -1146,6 +1146,7 @@ async function initLab(sessionInfo: {
   const btnRun = document.getElementById('btn-run')! as HTMLButtonElement;
   const btnTests = document.getElementById('btn-tests')! as HTMLButtonElement;
   const problemSelect = document.getElementById('problem-select')! as HTMLSelectElement;
+  problemSelect.disabled = true; // 課堂模式下學生不能選擇題目
   const statusText = document.getElementById('status-text')!;
   const statusDot = document.querySelector('.status-dot')!;
   const connDot = document.getElementById('conn-dot')!;
