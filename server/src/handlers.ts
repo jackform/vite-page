@@ -263,8 +263,16 @@ export function registerHandlers(
       }
     }
 
-    // Forward to the room
-    io.to(data.roomId).emit('guidance:update', { description: data.description });
+    // Check if student is online
+    const targetStudent = roomManager.getStudentByRoomId(data.roomId);
+    if (targetStudent) {
+      // Student is online, broadcast to room
+      io.to(data.roomId).emit('guidance:update', { description: data.description });
+    } else {
+      // Student is offline (free-practice), store as pending
+      const studentId = studentIdFromRoomId(data.roomId);
+      roomManager.setPendingGuidance(studentId, data.description);
+    }
   });
 
   socket.on('guidance:push-all', (data: { description: string }) => {

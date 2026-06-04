@@ -1019,7 +1019,7 @@ async function initLabFreePractice(): Promise<void> {
     try {
       const status = await CodeSocket.getClassroomStatus(currentStudentId);
       if (status.classroom && status.problem) {
-        enterClassroom(status.problem);
+        await enterClassroom(status.problem, status.guidance);
       }
     } catch { /* ignore polling errors */ }
   };
@@ -1029,7 +1029,7 @@ async function initLabFreePractice(): Promise<void> {
 
 /* ---- Classroom Mode ---- */
 
-async function enterClassroom(assignedProblem: AssignedProblem): Promise<void> {
+async function enterClassroom(assignedProblem: AssignedProblem, guidance?: string): Promise<void> {
   // Clear poll timer
   if (classroomPollTimer) {
     clearInterval(classroomPollTimer);
@@ -1089,6 +1089,11 @@ async function enterClassroom(assignedProblem: AssignedProblem): Promise<void> {
   currentProblem = codeProblem;
 
   await initLab(sessionInfo);
+
+  // Apply pending guidance if teacher pushed it together with the problem
+  if (guidance) {
+    applyGuidance(guidance);
+  }
 }
 
 /* ---- Init (Classroom) ---- */

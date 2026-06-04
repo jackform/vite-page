@@ -644,10 +644,12 @@ function initDashboard(): void {
     if (targetRoomId) {
       socket?.emit('problem:push', { roomId: targetRoomId, problem: assigned });
 
-      // Auto-push guidance content if teacher has edited it
+      // Pre-fill guidance editor with problem description
+      originalAssignedDescription = assigned.description;
       const guidanceEditor = document.getElementById('guidance-editor') as HTMLTextAreaElement;
-      if (guidanceEditor && guidanceEditor.value.trim()) {
-        socket?.emit('guidance:push', { roomId: targetRoomId, description: guidanceEditor.value });
+      if (guidanceEditor) {
+        guidanceEditor.value = assigned.description;
+        updateGuidancePreview();
       }
 
       const targetName = selectedStudentId || allStudents.find((s) => `room-${s.studentId}` === targetRoomId)?.studentId;
@@ -677,10 +679,12 @@ function initDashboard(): void {
 
     socket?.emit('problem:push-all', { problem: assigned });
 
-    // Auto-push guidance content to all students if teacher has edited it
+    // Pre-fill guidance editor with problem description
+    originalAssignedDescription = assigned.description;
     const guidanceEditor = document.getElementById('guidance-editor') as HTMLTextAreaElement;
-    if (guidanceEditor && guidanceEditor.value.trim()) {
-      socket?.emit('guidance:push-all', { description: guidanceEditor.value });
+    if (guidanceEditor) {
+      guidanceEditor.value = assigned.description;
+      updateGuidancePreview();
     }
 
     select.value = '';

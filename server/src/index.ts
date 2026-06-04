@@ -217,8 +217,9 @@ app.get('/api/students/:studentId/classroom-status', (req, res) => {
     // Register heartbeat for online-status tracking
     roomManager.markStudentSeen(req.params.studentId);
     const problem = roomManager.getPendingClassroom(req.params.studentId);
+    const guidance = roomManager.getPendingGuidance(req.params.studentId);
     if (problem) {
-      res.json({ classroom: true, problem });
+      res.json({ classroom: true, problem, guidance });
     } else {
       res.json({ classroom: false });
     }

@@ -132,6 +132,9 @@ export class RoomManager {
     return this.studentsBySocket.get(socketId)?.isLocked ?? false;
   }
 
+  /** Pending guidance descriptions for offline (free-practice) students. */
+  private pendingGuidance: Map<string, string> = new Map();
+
   /** Store a pending classroom push for an offline (free-practice) student. */
   setPendingClassroom(studentId: string, problem: AssignedProblem): void {
     this.pendingClassroom.set(studentId, problem);
@@ -149,6 +152,20 @@ export class RoomManager {
   /** Check if a student has a pending classroom push. */
   hasPendingClassroom(studentId: string): boolean {
     return this.pendingClassroom.has(studentId);
+  }
+
+  /** Store pending guidance for an offline (free-practice) student. */
+  setPendingGuidance(studentId: string, description: string): void {
+    this.pendingGuidance.set(studentId, description);
+  }
+
+  /** Get and clear the pending guidance for a student. */
+  getPendingGuidance(studentId: string): string | undefined {
+    const desc = this.pendingGuidance.get(studentId);
+    if (desc) {
+      this.pendingGuidance.delete(studentId);
+    }
+    return desc;
   }
 
   /** Only classroom-mode students appear in the roster. */

@@ -169,6 +169,7 @@ export interface SavedCodeData {
 export interface ClassroomStatusResponse {
   classroom: boolean;
   problem?: AssignedProblem;
+  guidance?: string;
 }
 
 /** Events the client may emit to the server. */
