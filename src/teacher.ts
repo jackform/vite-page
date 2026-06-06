@@ -621,6 +621,7 @@ function initDashboard(): void {
           constraints: problem.constraints,
           starterCode: problem.starterCode,
           testCases: problem.testCases,
+          engine: problem.engine,
         };
       }
     }
@@ -639,6 +640,7 @@ function initDashboard(): void {
           constraints: problem.constraints,
           starterCode: problem.starterCode,
           testCases: problem.testCases,
+          engine: problem.engine,
         };
       }
     } catch {

@@ -27,7 +27,6 @@ import type { CodeProblem, ExecutionStatus } from './code-types';
 import type { AssignedProblem, ChatMessage } from '../shared/types';
 
 const THEME_KEY = 'python-lab-theme';
-const ENGINE_KEY = 'python-lab-engine';
 
 type EngineType = 'pyodide' | 'skulpt' | 'pyodide-widget';
 
@@ -56,6 +55,23 @@ let preLockCode = '';
 let inClassroom = false;
 let classroomPollTimer: ReturnType<typeof setInterval> | null = null;
 let autoSaveDebounce: ReturnType<typeof setTimeout> | null = null;
+/** Function to switch the Python engine. Set by initLabFreePractice/initLab. */
+let switchEngine: ((engine: EngineType) => void) | null = null;
+
+/** Human-readable label for an engine type. */
+function engineLabel(engine: EngineType): string {
+  if (engine === 'skulpt') return 'Skulpt';
+  if (engine === 'pyodide-widget') return 'Pyodide + Widgets';
+  return 'Pyodide';
+}
+
+/** Update the engine display span with the given engine type. */
+function updateEngineDisplay(engine: EngineType): void {
+  const display = document.getElementById('engine-display');
+  if (display) {
+    display.textContent = engineLabel(engine);
+  }
+}
 
 /* ---- Theme ---- */
 
@@ -133,11 +149,7 @@ function renderLayout(): string {
           <select class="problem-select" id="problem-select" title="選擇題目">
             <option value="">載入中...</option>
           </select>
-          <select class="engine-select" id="engine-select" title="Python 引擎">
-            <option value="pyodide">Pyodide</option>
-            <option value="skulpt">Skulpt</option>
-            <option value="pyodide-widget">Pyodide + Widgets</option>
-          </select>
+          <span class="engine-display" id="engine-display" title="Python 引擎（由題目配置）">Pyodide</span>
           <div class="executor-status" id="executor-status">
             <span class="status-dot status-loading"></span>
             <span id="status-text">Loading Python...</span>
@@ -792,6 +804,13 @@ function switchToProblem(problem: CodeProblem): void {
   problemPanel.innerHTML = renderProblem(problem);
   outputPanel.innerHTML = '<div class="output-placeholder">Ready. Press Run to execute.</div>';
   populateProblemSelect();
+
+  // Auto-switch engine based on problem configuration
+  const problemEngine = (problem.engine || 'pyodide') as EngineType;
+  if (problemEngine !== currentEngine && switchEngine) {
+    updateEngineDisplay(problemEngine);
+    switchEngine(problemEngine);
+  }
 }
 
 /* ---- Free Practice Mode ---- */
@@ -865,15 +884,12 @@ async function initLabFreePractice(): Promise<void> {
   updateThemeButton();
   document.getElementById('btn-theme-toggle')!.addEventListener('click', toggleTheme);
 
-  // Engine selector (same as initLab)
-  const engineSelect = document.getElementById('engine-select') as HTMLSelectElement;
+  // Engine setup: driven by problem configuration, not user selection
   const turtleWrapper = document.getElementById('turtle-canvas-wrapper')!;
 
-  const savedEngine = localStorage.getItem(ENGINE_KEY) as EngineType | null;
-  if (savedEngine === 'skulpt' || savedEngine === 'pyodide' || savedEngine === 'pyodide-widget') {
-    currentEngine = savedEngine;
-    engineSelect.value = savedEngine;
-  }
+  // Initialize engine from current problem (defaults to pyodide)
+  currentEngine = (currentProblem?.engine || 'pyodide') as EngineType;
+  updateEngineDisplay(currentEngine);
 
   function createExecutorLocal(engine: EngineType): void {
     executor?.destroy();
@@ -890,9 +906,8 @@ async function initLabFreePractice(): Promise<void> {
       } catch (err: any) {
         console.error('Skulpt init failed:', err);
         outputPanel.innerHTML = `<div class="output-stderr">Failed to start Skulpt: ${escapeHtml(err.message)}</div>`;
-        engineSelect.value = 'pyodide';
-        localStorage.setItem(ENGINE_KEY, 'pyodide');
         currentEngine = 'pyodide';
+        updateEngineDisplay('pyodide');
         executor = new CodeExecutor();
       }
     } else if (engine === 'pyodide-widget') {
@@ -917,7 +932,7 @@ async function initLabFreePractice(): Promise<void> {
     }
 
     currentEngine = engine;
-    localStorage.setItem(ENGINE_KEY, engine);
+    updateEngineDisplay(engine);
 
     executor.onStatusChange((status: ExecutionStatus) => {
       updateStatusUI(status, statusText, statusDot, btnRun, btnTests, executor.getStatusMessage());
@@ -932,14 +947,8 @@ async function initLabFreePractice(): Promise<void> {
     });
   }
 
+  switchEngine = createExecutorLocal;
   createExecutorLocal(currentEngine);
-
-  engineSelect.addEventListener('change', () => {
-    const engine = engineSelect.value as EngineType;
-    if (engine !== currentEngine) {
-      createExecutorLocal(engine);
-    }
-  });
 
   async function handleRunLocal(): Promise<void> {
     if (!executor.isReady()) return;
@@ -1084,6 +1093,7 @@ async function enterClassroom(assignedProblem?: AssignedProblem, guidance?: stri
       constraints: assignedProblem.constraints || [],
       starterCode: assignedProblem.starterCode,
       testCases: assignedProblem.testCases || [],
+      engine: assignedProblem.engine,
     };
 
     if (!problemsById[codeProblem.id]) {
@@ -1323,6 +1333,7 @@ async function initLab(sessionInfo: {
       constraints: problem.constraints || [],
       starterCode: problem.starterCode,
       testCases: problem.testCases || [],
+      engine: problem.engine,
     };
 
     // Also add to local cache so it appears in the cycle list
@@ -1348,15 +1359,12 @@ async function initLab(sessionInfo: {
   updateThemeButton();
   document.getElementById('btn-theme-toggle')!.addEventListener('click', toggleTheme);
 
-  // Engine selector
-  const engineSelect = document.getElementById('engine-select') as HTMLSelectElement;
+  // Engine setup: driven by problem configuration, not user selection
   const turtleWrapper = document.getElementById('turtle-canvas-wrapper')!;
 
-  const savedEngine = localStorage.getItem(ENGINE_KEY) as EngineType | null;
-  if (savedEngine === 'skulpt' || savedEngine === 'pyodide' || savedEngine === 'pyodide-widget') {
-    currentEngine = savedEngine;
-    engineSelect.value = savedEngine;
-  }
+  // Initialize engine from current problem (defaults to pyodide)
+  currentEngine = (currentProblem?.engine || 'pyodide') as EngineType;
+  updateEngineDisplay(currentEngine);
 
   function createExecutor(engine: EngineType): void {
     executor?.destroy();
@@ -1373,9 +1381,8 @@ async function initLab(sessionInfo: {
       } catch (err: any) {
         console.error('Skulpt init failed:', err);
         outputPanel.innerHTML = `<div class="output-stderr">Failed to start Skulpt: ${escapeHtml(err.message)}</div>`;
-        engineSelect.value = 'pyodide';
-        localStorage.setItem(ENGINE_KEY, 'pyodide');
         currentEngine = 'pyodide';
+        updateEngineDisplay('pyodide');
         executor = new CodeExecutor();
       }
     } else if (engine === 'pyodide-widget') {
@@ -1402,7 +1409,7 @@ async function initLab(sessionInfo: {
     }
 
     currentEngine = engine;
-    localStorage.setItem(ENGINE_KEY, engine);
+    updateEngineDisplay(engine);
 
     executor.onStatusChange((status: ExecutionStatus) => {
       updateStatusUI(status, statusText, statusDot, btnRun, btnTests, executor.getStatusMessage());
@@ -1417,14 +1424,8 @@ async function initLab(sessionInfo: {
     });
   }
 
+  switchEngine = createExecutor;
   createExecutor(currentEngine);
-
-  engineSelect.addEventListener('change', () => {
-    const engine = engineSelect.value as EngineType;
-    if (engine !== currentEngine) {
-      createExecutor(engine);
-    }
-  });
 
   function switchToOutputTab(): void {
     if (activeStudentTab !== 'output') {

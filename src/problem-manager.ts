@@ -14,6 +14,7 @@ export interface ProblemMeta {
   author: string;
   createdAt: string;
   updatedAt: string;
+  engine?: 'pyodide' | 'skulpt' | 'pyodide-widget';
 }
 
 export interface Problem extends ProblemMeta {
@@ -54,6 +55,7 @@ function emptyProblem(): EditingProblem {
     author: 'teacher',
     createdAt: '',
     updatedAt: '',
+    engine: 'pyodide',
   };
 }
 
@@ -202,6 +204,14 @@ export class ProblemManager {
               <option value="hard" ${p.difficulty === 'hard' ? 'selected' : ''}>Hard</option>
             </select>
           </div>
+          <div class="pm-field pm-field-engine">
+            <label>引擎</label>
+            <select id="pm-engine">
+              <option value="pyodide" ${(p.engine || 'pyodide') === 'pyodide' ? 'selected' : ''}>Pyodide</option>
+              <option value="skulpt" ${(p.engine || 'pyodide') === 'skulpt' ? 'selected' : ''}>Skulpt</option>
+              <option value="pyodide-widget" ${(p.engine || 'pyodide') === 'pyodide-widget' ? 'selected' : ''}>Pyodide + Widgets</option>
+            </select>
+          </div>
         </div>
         <div class="pm-form-row">
           <div class="pm-field pm-field-category">
@@ -318,6 +328,7 @@ export class ProblemManager {
   private syncFormToEditing(): void {
     this.editing.title = (document.getElementById('pm-title') as HTMLInputElement)?.value || '';
     this.editing.difficulty = (document.getElementById('pm-difficulty') as HTMLSelectElement)?.value as EditingProblem['difficulty'] || 'easy';
+    this.editing.engine = ((document.getElementById('pm-engine') as HTMLSelectElement)?.value || 'pyodide') as 'pyodide' | 'skulpt' | 'pyodide-widget';
     this.editing.category = (document.getElementById('pm-category') as HTMLInputElement)?.value || '';
     const tagsRaw = (document.getElementById('pm-tags') as HTMLInputElement)?.value || '';
     this.editing.tags = tagsRaw.split(',').map((t) => t.trim()).filter(Boolean);
@@ -585,6 +596,7 @@ export class ProblemManager {
   private collectFormData(): EditingProblem {
     const title = (document.getElementById('pm-title') as HTMLInputElement)?.value?.trim() || '';
     const difficulty = (document.getElementById('pm-difficulty') as HTMLSelectElement)?.value as EditingProblem['difficulty'] || 'easy';
+    const engine = ((document.getElementById('pm-engine') as HTMLSelectElement)?.value || 'pyodide') as 'pyodide' | 'skulpt' | 'pyodide-widget';
     const category = (document.getElementById('pm-category') as HTMLInputElement)?.value?.trim() || '';
     const tagsRaw = (document.getElementById('pm-tags') as HTMLInputElement)?.value || '';
     const tags = tagsRaw.split(',').map((t) => t.trim()).filter(Boolean);
@@ -596,6 +608,7 @@ export class ProblemManager {
       ...this.editing,
       title,
       difficulty,
+      engine,
       category,
       tags,
       description,

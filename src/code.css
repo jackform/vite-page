@@ -459,6 +459,17 @@ body {
   border-color: var(--code-accent);
 }
 
+.engine-display {
+  background: var(--code-bg-secondary);
+  color: var(--code-text-primary);
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: default;
+}
+
 /* ---- Turtle Canvas ---- */
 
 .turtle-canvas-wrapper {

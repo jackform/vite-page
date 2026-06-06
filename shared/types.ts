@@ -121,6 +121,7 @@ export interface AssignedProblem {
   constraints: string[];
   starterCode: string;
   testCases: { input: string; expected: string }[];
+  engine?: 'pyodide' | 'skulpt' | 'pyodide-widget';
 }
 
 /** Student auth types for REST-based PIN login. */

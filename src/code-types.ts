@@ -22,6 +22,8 @@ export interface CodeProblem {
   constraints: string[];
   starterCode: string;
   testCases: TestCase[];
+  /** Python execution engine for this problem. Defaults to 'pyodide'. */
+  engine?: 'pyodide' | 'skulpt' | 'pyodide-widget';
 }
 
 /** Execution status for a single code run. */

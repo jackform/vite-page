@@ -52,6 +52,7 @@ export interface ProblemMeta {
   author: string;
   createdAt: string;
   updatedAt: string;
+  engine?: 'pyodide' | 'skulpt' | 'pyodide-widget';
 }
 
 export interface Problem extends ProblemMeta {
@@ -115,6 +116,7 @@ export function createProblem(problem: Problem): Problem {
     author: problem.author || 'teacher',
     createdAt: problem.createdAt,
     updatedAt: problem.updatedAt,
+    engine: (problem as any).engine || 'pyodide',
   };
 
   fs.writeFileSync(problemPath(problem.id), JSON.stringify(problem, null, 2), 'utf-8');
@@ -147,6 +149,7 @@ export function updateProblem(id: string, updates: Partial<Problem>): Problem | 
       author: merged.author || 'teacher',
       createdAt: merged.createdAt,
       updatedAt: merged.updatedAt,
+      engine: (merged as any).engine || index.problems[id]?.engine || 'pyodide',
     };
     index.updatedAt = merged.updatedAt;
     writeIndex(index);
