@@ -202,4 +202,5 @@ export interface ClientToServerEvents {
   'guidance:push-all': (data: { description: string }) => void;
   'classroom:end': (data: { roomId: string }) => void;
   'classroom:leave': () => void;
+  'classroom:invite': (data: { roomId: string }) => void;
 }

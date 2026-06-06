@@ -210,14 +210,18 @@ function renderDashboard(): string {
           <div class="monitor-student-info" id="monitor-student-info">
             <span class="monitor-placeholder">請選擇一名學生查看代碼</span>
           </div>
-          <div class="monitor-push-bar" id="monitor-push-bar">
+          <div class="monitor-push-bar hidden" id="monitor-push-bar">
             <div class="push-bar-row">
               <select id="push-problem-select" class="push-select">
                 <option value="">選擇要推送的題目...</option>
               </select>
-              <input type="text" id="push-student-id" class="push-student-id-input" placeholder="學生編號（可選）" autocomplete="off" />
               <button class="btn btn-push" id="btn-push-to-student">推送給學生</button>
               <button class="btn btn-push-all" id="btn-push-to-all">推送給所有學生</button>
+            </div>
+          </div>
+          <div class="monitor-invite-bar hidden" id="monitor-invite-bar">
+            <div class="push-bar-row" style="justify-content:center">
+              <button class="btn btn-start-classroom" id="btn-start-classroom">開始課堂模式</button>
             </div>
           </div>
           <div class="monitor-view-tabs" id="monitor-view-tabs" style="display:none">
@@ -443,6 +447,7 @@ function initDashboard(): void {
       <option value="">選擇要推送的題目...</option>
       ${problems.map((p: { id: string; title: string }) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.title)}</option>`).join('')}
     `;
+    select.value = '';
   }
 
   function selectStudent(studentId: string, roomId: string, inClassroom: boolean): void {
@@ -480,6 +485,12 @@ function initDashboard(): void {
       // === Classroom mode: full monitoring ===
       selectedRoomId = roomId;
       selectedStudentId = null;
+
+      // Show push bar, hide invite bar
+      const pushBar = document.getElementById('monitor-push-bar')!;
+      pushBar.classList.remove('hidden');
+      const inviteBar = document.getElementById('monitor-invite-bar')!;
+      inviteBar.classList.add('hidden');
 
       // Reset guidance state BEFORE subscribing to the room.
       // room:subscribe triggers the server to send cached state (including
@@ -535,9 +546,15 @@ function initDashboard(): void {
       monitorEditor.innerHTML = '<div class="output-placeholder">等待代碼同步...</div>';
       monitorOutput.innerHTML = '<div class="output-placeholder">等待執行結果...</div>';
     } else {
-      // === Free practice mode: basic info + push only ===
+      // === Free practice mode: invite to classroom ===
       selectedRoomId = null;
       selectedStudentId = studentId;
+
+      // Show invite bar, hide push bar
+      const pushBar = document.getElementById('monitor-push-bar')!;
+      pushBar.classList.add('hidden');
+      const inviteBar = document.getElementById('monitor-invite-bar')!;
+      inviteBar.classList.remove('hidden');
 
       // Destroy chat client since there's no socket room
       chatClient?.destroy();
@@ -566,6 +583,13 @@ function initDashboard(): void {
       // Hide lock button
       btnLockToggle.classList.add('hidden');
 
+      // Reset invite button state
+      const inviteBtn = document.getElementById('btn-start-classroom') as HTMLButtonElement;
+      if (inviteBtn) {
+        inviteBtn.disabled = false;
+        inviteBtn.textContent = '開始課堂模式';
+      }
+
       // Clear editors
       if (codeEditor) {
         codeEditor.destroy();
@@ -575,14 +599,8 @@ function initDashboard(): void {
         teacherEditor.destroy();
         teacherEditor = null;
       }
-      monitorEditor.innerHTML = '<div class="output-placeholder">此學生尚未進入課堂模式，推送題目後即可開始監控</div>';
+      monitorEditor.innerHTML = '<div class="output-placeholder">點擊「開始課堂模式」邀請學生進入課堂</div>';
       monitorOutput.innerHTML = '<div class="output-placeholder">選擇課堂模式學生後，此處將顯示執行結果</div>';
-
-      // Pre-fill student ID in push input
-      const studentIdInput = document.getElementById('push-student-id') as HTMLInputElement;
-      if (studentIdInput) {
-        studentIdInput.value = studentId;
-      }
     }
 
     renderRoster();
@@ -629,42 +647,30 @@ function initDashboard(): void {
     return null;
   }
 
-  // Push button - works for classroom, selected non-classroom, or manual ID
+  // Push button - classroom mode only
   document.getElementById('btn-push-to-student')?.addEventListener('click', async () => {
     const select = document.getElementById('push-problem-select') as HTMLSelectElement;
-    const studentIdInput = document.getElementById('push-student-id') as HTMLInputElement;
     const problemId = select.value;
     if (!problemId) return;
 
     const assigned = await fetchProblem(problemId);
     if (!assigned) return;
 
-    // Determine target student
-    const targetRoomId = selectedRoomId || (selectedStudentId ? `room-${selectedStudentId}` : null);
-    if (targetRoomId) {
-      socket?.emit('problem:push', { roomId: targetRoomId, problem: assigned });
+    if (!selectedRoomId) return;
 
-      // Pre-fill guidance editor with problem description
-      originalAssignedDescription = assigned.description;
-      const guidanceEditor = document.getElementById('guidance-editor') as HTMLTextAreaElement;
-      if (guidanceEditor) {
-        guidanceEditor.value = assigned.description;
-        updateGuidancePreview();
-      }
+    socket?.emit('problem:push', { roomId: selectedRoomId, problem: assigned });
 
-      const targetName = selectedStudentId || allStudents.find((s) => `room-${s.studentId}` === targetRoomId)?.studentId;
-      alert(`已推送「${assigned.title}」給學生`);
-    } else {
-      const manualId = studentIdInput.value.trim();
-      if (!manualId) {
-        alert('請先選擇學生或輸入學生編號');
-        return;
-      }
-      socket?.emit('problem:push', { roomId: `room-${manualId}`, problem: assigned });
-      alert(`已推送「${assigned.title}」給學生 ${manualId}（等待學生進入課堂模式）`);
+    // Pre-fill guidance editor with problem description
+    originalAssignedDescription = assigned.description;
+    const guidanceEditor = document.getElementById('guidance-editor') as HTMLTextAreaElement;
+    if (guidanceEditor) {
+      guidanceEditor.value = assigned.description;
+      updateGuidancePreview();
     }
+
+    const targetName = allStudents.find((s) => `room-${s.studentId}` === selectedRoomId)?.studentId;
+    alert(`已推送「${assigned.title}」給學生`);
     select.value = '';
-    studentIdInput.value = '';
   });
 
   document.getElementById('btn-push-to-all')?.addEventListener('click', async () => {
@@ -812,8 +818,28 @@ function initDashboard(): void {
 
     selectedRoomId = null;
     selectedStudentId = null;
+
+    // Hide push and invite bars
+    const pushBar = document.getElementById('monitor-push-bar')!;
+    pushBar.classList.add('hidden');
+    const inviteBar = document.getElementById('monitor-invite-bar')!;
+    inviteBar.classList.add('hidden');
+
     monitorStudentInfo.innerHTML = '<span class="monitor-placeholder">請選擇一名學生查看代碼</span>';
     renderRoster();
+  });
+
+  // ---- Classroom Invite Button ----
+
+  const btnStartClassroom = document.getElementById('btn-start-classroom') as HTMLButtonElement;
+  btnStartClassroom.addEventListener('click', () => {
+    if (!selectedStudentId) return;
+
+    const roomId = `room-${selectedStudentId}`;
+    socket?.emit('classroom:invite', { roomId });
+
+    btnStartClassroom.disabled = true;
+    btnStartClassroom.textContent = '等待學生進入課堂...';
   });
 
   // ---- Lock & Push Socket Listeners ----

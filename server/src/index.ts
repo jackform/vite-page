@@ -218,8 +218,9 @@ app.get('/api/students/:studentId/classroom-status', (req, res) => {
     roomManager.markStudentSeen(req.params.studentId);
     const problem = roomManager.getPendingClassroom(req.params.studentId);
     const guidance = roomManager.getPendingGuidance(req.params.studentId);
-    if (problem) {
-      res.json({ classroom: true, problem, guidance });
+    const hasInvite = roomManager.hasPendingClassroomInvite(req.params.studentId);
+    if (problem || hasInvite) {
+      res.json({ classroom: true, problem: problem || undefined, guidance: guidance || undefined });
     } else {
       res.json({ classroom: false });
     }

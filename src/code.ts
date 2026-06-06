@@ -1018,7 +1018,7 @@ async function initLabFreePractice(): Promise<void> {
   const pollClassroom = async () => {
     try {
       const status = await CodeSocket.getClassroomStatus(currentStudentId);
-      if (status.classroom && status.problem) {
+      if (status.classroom) {
         await enterClassroom(status.problem, status.guidance);
       }
     } catch { /* ignore polling errors */ }
@@ -1029,7 +1029,7 @@ async function initLabFreePractice(): Promise<void> {
 
 /* ---- Classroom Mode ---- */
 
-async function enterClassroom(assignedProblem: AssignedProblem, guidance?: string): Promise<void> {
+async function enterClassroom(assignedProblem?: AssignedProblem, guidance?: string): Promise<void> {
   // Clear poll timer
   if (classroomPollTimer) {
     clearInterval(classroomPollTimer);
@@ -1052,7 +1052,11 @@ async function enterClassroom(assignedProblem: AssignedProblem, guidance?: strin
     autoSaveDebounce = null;
   }
 
-  showNotification('教師正在推送題目');
+  if (assignedProblem) {
+    showNotification('教師正在推送題目');
+  } else {
+    showNotification('教師邀請您進入課堂模式');
+  }
 
   // Destroy existing executor and editor
   if (executor) {
@@ -1069,24 +1073,26 @@ async function enterClassroom(assignedProblem: AssignedProblem, guidance?: strin
     'classroom'
   );
 
-  // Build the assigned problem for local use
-  const codeProblem: CodeProblem = {
-    id: assignedProblem.id,
-    title: assignedProblem.title,
-    difficulty: assignedProblem.difficulty,
-    description: assignedProblem.description,
-    examples: assignedProblem.examples || [],
-    constraints: assignedProblem.constraints || [],
-    starterCode: assignedProblem.starterCode,
-    testCases: assignedProblem.testCases || [],
-  };
+  if (assignedProblem) {
+    // Build the assigned problem for local use
+    const codeProblem: CodeProblem = {
+      id: assignedProblem.id,
+      title: assignedProblem.title,
+      difficulty: assignedProblem.difficulty,
+      description: assignedProblem.description,
+      examples: assignedProblem.examples || [],
+      constraints: assignedProblem.constraints || [],
+      starterCode: assignedProblem.starterCode,
+      testCases: assignedProblem.testCases || [],
+    };
 
-  if (!problemsById[codeProblem.id]) {
-    problemsById[codeProblem.id] = codeProblem;
-    problemIds.push(codeProblem.id);
+    if (!problemsById[codeProblem.id]) {
+      problemsById[codeProblem.id] = codeProblem;
+      problemIds.push(codeProblem.id);
+    }
+
+    currentProblem = codeProblem;
   }
-
-  currentProblem = codeProblem;
 
   await initLab(sessionInfo);
 

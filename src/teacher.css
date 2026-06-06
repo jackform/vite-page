@@ -415,8 +415,6 @@ body {
   margin-top: 8px;
 }
 
-.hidden { display: none; }
-
 /* ---- Tabs ---- */
 
 .teacher-tabs {
@@ -572,6 +570,39 @@ body {
 
 .btn-end-classroom:hover {
   opacity: 0.85;
+}
+
+/* ---- Monitor Invite Bar ---- */
+
+.monitor-invite-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 20px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.btn-start-classroom {
+  background: var(--accent-green);
+  color: #1a1a2e;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+}
+
+.btn-start-classroom:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.btn-start-classroom:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .push-select {
@@ -923,3 +954,6 @@ body {
     height: 150px;
   }
 }
+
+/* Must be last to override all display: flex / display: block rules above */
+.hidden { display: none; }

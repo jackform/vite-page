@@ -33,6 +33,9 @@ function endClassroom(
     codeStore.saveCode(student.studentId, problemId, code);
   }
 
+  // Clear pending classroom invite
+  roomManager.clearPendingClassroomInvite(student.studentId);
+
   // Auto-unlock if locked
   if (student.isLocked) {
     roomManager.unlockStudent(socketId);
@@ -84,7 +87,8 @@ export function registerHandlers(
       }
     }
 
-    const record = roomManager.addStudent(socket.id, studentId.trim(), name.trim(), mode || 'classroom');
+    const effectiveMode = mode || 'classroom';
+    const record = roomManager.addStudent(socket.id, studentId.trim(), name.trim(), effectiveMode);
     socket.join(record.roomId);
 
     socket.emit('session:registered', {
@@ -104,6 +108,19 @@ export function registerHandlers(
     // If the student was previously locked, re-notify
     if (record.isLocked) {
       socket.emit('editor:locked', { roomId: record.roomId, isLocked: true });
+    }
+
+    // Apply pending classroom push (from teacher pushing while student was in free-practice mode)
+    const pendingProblem = roomManager.getPendingClassroom(studentId.trim());
+    if (pendingProblem) {
+      roomManager.assignProblem(socket.id, pendingProblem);
+      io.to(record.roomId).emit('problem:assigned', { problem: pendingProblem });
+    }
+
+    // Apply pending guidance (from teacher pushing while student was in free-practice mode)
+    const pendingGuidance = roomManager.getPendingGuidance(studentId.trim());
+    if (pendingGuidance) {
+      io.to(record.roomId).emit('guidance:update', { description: pendingGuidance });
     }
 
     io.emit('roster:update', { students: roomManager.getRoster() });
@@ -209,16 +226,16 @@ export function registerHandlers(
   socket.on('problem:push', (data: { roomId: string; problem: AssignedProblem }) => {
     if (!socket.data.isTeacher) return;
 
-    const student = roomManager.getStudentByRoomId(data.roomId);
-    if (!student) {
-      // Student is offline (free-practice mode), queue as pending push
-      const studentId = studentIdFromRoomId(data.roomId);
-      roomManager.setPendingClassroom(studentId, data.problem);
-      return;
-    }
+    const studentId = studentIdFromRoomId(data.roomId);
 
-    roomManager.assignProblem(student.socketId, data.problem);
-    io.to(data.roomId).emit('problem:assigned', { problem: data.problem });
+    // Always store as pending so the assignment survives reconnect
+    roomManager.setPendingClassroom(studentId, data.problem);
+
+    const student = roomManager.getStudentByRoomId(data.roomId);
+    if (student) {
+      roomManager.assignProblem(student.socketId, data.problem);
+      io.to(data.roomId).emit('problem:assigned', { problem: data.problem });
+    }
   });
 
   socket.on('problem:push-all', (data: { problem: AssignedProblem }) => {
@@ -263,15 +280,16 @@ export function registerHandlers(
       }
     }
 
+    const studentId = studentIdFromRoomId(data.roomId);
+
+    // Always store as pending so the guidance survives reconnect
+    roomManager.setPendingGuidance(studentId, data.description);
+
     // Check if student is online
     const targetStudent = roomManager.getStudentByRoomId(data.roomId);
     if (targetStudent) {
       // Student is online, broadcast to room
       io.to(data.roomId).emit('guidance:update', { description: data.description });
-    } else {
-      // Student is offline (free-practice), store as pending
-      const studentId = studentIdFromRoomId(data.roomId);
-      roomManager.setPendingGuidance(studentId, data.description);
     }
   });
 
@@ -297,6 +315,18 @@ export function registerHandlers(
 
   registerLockHandlers(io, socket, teacherWatching, roomManager);
 
+  // ---- Classroom Invite ----
+
+  socket.on('classroom:invite', (data: { roomId: string }) => {
+    if (!socket.data.isTeacher) return;
+
+    const studentId = studentIdFromRoomId(data.roomId);
+    const online = roomManager.getStudentByRoomId(data.roomId);
+    if (online && online.mode === 'classroom') return; // Already in classroom, no invite needed
+
+    roomManager.setPendingClassroomInvite(studentId);
+  });
+
   // ---- Classroom End ----
 
   socket.on('classroom:end', (data: { roomId: string }) => {
@@ -308,6 +338,9 @@ export function registerHandlers(
 
     const student = roomManager.getStudentByRoomId(data.roomId);
     if (!student) return;
+
+    // Clear pending invite when classroom ends
+    roomManager.clearPendingClassroomInvite(student.studentId);
 
     socket.leave(data.roomId);
     teacherWatching.delete(socket.id);

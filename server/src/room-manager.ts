@@ -132,6 +132,31 @@ export class RoomManager {
     return this.studentsBySocket.get(socketId)?.isLocked ?? false;
   }
 
+  /** Pending classroom invites for free-practice students (no problem yet). */
+  private pendingClassroomInvites: Set<string> = new Set();
+
+  /** Store a pending classroom invite for a free-practice student. */
+  setPendingClassroomInvite(studentId: string): void {
+    this.pendingClassroomInvites.add(studentId);
+  }
+
+  /** Check if a student has a pending classroom invite (non-destructive). */
+  hasPendingClassroomInvite(studentId: string): boolean {
+    return this.pendingClassroomInvites.has(studentId);
+  }
+
+  /** Get and clear the pending classroom invite for a student. */
+  getPendingClassroomInvite(studentId: string): boolean {
+    const has = this.pendingClassroomInvites.has(studentId);
+    this.pendingClassroomInvites.delete(studentId);
+    return has;
+  }
+
+  /** Explicitly clear a pending classroom invite. */
+  clearPendingClassroomInvite(studentId: string): void {
+    this.pendingClassroomInvites.delete(studentId);
+  }
+
   /** Pending guidance descriptions for offline (free-practice) students. */
   private pendingGuidance: Map<string, string> = new Map();
 
