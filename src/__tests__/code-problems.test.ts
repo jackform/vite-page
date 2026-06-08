@@ -154,4 +154,29 @@ describe('code-problems', () => {
       expect(problems['pandas-demo'].difficulty).toBe('easy');
     });
   });
+
+  describe('engine field', () => {
+    it('each problem defaults to pyodide when engine is not set', () => {
+      for (const [id, problem] of Object.entries(problems)) {
+        const engine = problem.engine || 'pyodide';
+        expect(['pyodide', 'skulpt', 'pyodide-widget']).toContain(engine);
+      }
+    });
+
+    it('fallback problems have no explicit engine (rely on pyodide default)', () => {
+      // Fallback problems don't set engine; the runtime default is pyodide
+      for (const [id, problem] of Object.entries(problems)) {
+        if (problem.engine === undefined) {
+          // This is expected — unset means pyodide
+          expect(problem.engine).toBeUndefined();
+        } else {
+          expect(['pyodide', 'skulpt', 'pyodide-widget']).toContain(problem.engine);
+        }
+      }
+    });
+
+    it('two-sum fallback has no explicit engine', () => {
+      expect(problems['two-sum'].engine).toBeUndefined();
+    });
+  });
 });

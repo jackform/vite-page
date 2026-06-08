@@ -501,6 +501,37 @@ describe('Socket.io Integration', () => {
       expect(roomManager.getStudentBySocket('sock-1')?.assignedProblem?.title).toBe('Test Problem');
       expect(roomManager.getStudentBySocket('sock-2')?.assignedProblem?.title).toBe('Test Problem');
     });
+
+    it('problem:push preserves engine field', () => {
+      createAndRegisterStudent('sock-1', 'Alice', 'S001');
+      const teacher = createAndRegisterTeacher('teacher-1');
+
+      const problemWithEngine = {
+        ...sampleProblem,
+        engine: 'skulpt' as const,
+      };
+
+      teacher.trigger('problem:push', { roomId: 'room-S001', problem: problemWithEngine });
+
+      const student = roomManager.getStudentByRoomId('room-S001');
+      expect(student?.assignedProblem?.engine).toBe('skulpt');
+    });
+
+    it('problem:push-all preserves engine field', () => {
+      createAndRegisterStudent('sock-1', 'Alice', 'S001');
+      createAndRegisterStudent('sock-2', 'Bob', 'S002');
+      const teacher = createAndRegisterTeacher('teacher-1');
+
+      const problemWithEngine = {
+        ...sampleProblem,
+        engine: 'pyodide-widget' as const,
+      };
+
+      teacher.trigger('problem:push-all', { problem: problemWithEngine });
+
+      expect(roomManager.getStudentBySocket('sock-1')?.assignedProblem?.engine).toBe('pyodide-widget');
+      expect(roomManager.getStudentBySocket('sock-2')?.assignedProblem?.engine).toBe('pyodide-widget');
+    });
   });
 
   // ---- 2.7 Lock Flow ----

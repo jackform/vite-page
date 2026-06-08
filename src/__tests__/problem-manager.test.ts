@@ -416,6 +416,141 @@ describe('ProblemManager', () => {
 
   // ---- 4.5 Import / Export ----
 
+  describe('engine field', () => {
+    it('renders engine dropdown in edit form', async () => {
+      const pm = new ProblemManager(container);
+      await pm.init();
+
+      const engineSelect = container.querySelector('#pm-engine') as HTMLSelectElement;
+      expect(engineSelect).toBeTruthy();
+      expect(engineSelect.tagName).toBe('SELECT');
+    });
+
+    it('engine dropdown has three options (pyodide, skulpt, pyodide-widget)', async () => {
+      const pm = new ProblemManager(container);
+      await pm.init();
+
+      const engineSelect = container.querySelector('#pm-engine') as HTMLSelectElement;
+      const options = engineSelect.querySelectorAll('option');
+      expect(options).toHaveLength(3);
+
+      const values = Array.from(options).map((o) => (o as HTMLOptionElement).value);
+      expect(values).toEqual(['pyodide', 'skulpt', 'pyodide-widget']);
+    });
+
+    it('new problem defaults engine to pyodide', async () => {
+      const pm = new ProblemManager(container);
+      await pm.init();
+
+      const engineSelect = container.querySelector('#pm-engine') as HTMLSelectElement;
+      expect(engineSelect.value).toBe('pyodide');
+    });
+
+    it('selected problem reflects its engine value', async () => {
+      // Use a problem detail with a non-default engine
+      const problemWithEngine = {
+        ...sampleProblemDetail,
+        id: 'p1',
+        engine: 'skulpt',
+      };
+
+      fetchMock.mockImplementation((url: string) => {
+        if (url === '/api/problems') {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(sampleProblemList) });
+        }
+        if (url.startsWith('/api/problems/')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(problemWithEngine) });
+        }
+        return Promise.resolve({ ok: false, json: () => Promise.resolve(null) });
+      });
+
+      const pm = new ProblemManager(container);
+      await pm.init();
+
+      // Select the problem
+      const item = container.querySelector('.pm-problem-item') as HTMLElement;
+      item.click();
+
+      await vi.waitFor(() => {
+        const engineSelect = container.querySelector('#pm-engine') as HTMLSelectElement;
+        expect(engineSelect.value).toBe('skulpt');
+      });
+    });
+
+    it('engine included in save request body', async () => {
+      let savedBody: any = null;
+      fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+        if (url === '/api/problems' && init?.method === 'POST') {
+          savedBody = JSON.parse(init.body as string);
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ ...sampleProblemDetail, id: 'new-id' }),
+          });
+        }
+        if (url === '/api/problems') {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(sampleProblemList) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(sampleProblemDetail) });
+      });
+
+      const pm = new ProblemManager(container);
+      await pm.init();
+
+      // Set title and select skulpt engine
+      const titleInput = container.querySelector('#pm-title') as HTMLInputElement;
+      titleInput.value = 'Engine Save Test';
+      const engineSelect = container.querySelector('#pm-engine') as HTMLSelectElement;
+      engineSelect.value = 'skulpt';
+      engineSelect.dispatchEvent(new Event('change'));
+
+      const saveBtn = container.querySelector('#pm-btn-save') as HTMLElement;
+      saveBtn.click();
+
+      await vi.waitFor(() => {
+        expect(savedBody).not.toBeNull();
+      });
+
+      expect(savedBody.engine).toBe('skulpt');
+    });
+
+    it('save with pyodide-widget engine includes correct value', async () => {
+      let savedBody: any = null;
+      fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+        if (url === '/api/problems' && init?.method === 'POST') {
+          savedBody = JSON.parse(init.body as string);
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ ...sampleProblemDetail, id: 'new-id-2' }),
+          });
+        }
+        if (url === '/api/problems') {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(sampleProblemList) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(sampleProblemDetail) });
+      });
+
+      const pm = new ProblemManager(container);
+      await pm.init();
+
+      const titleInput = container.querySelector('#pm-title') as HTMLInputElement;
+      titleInput.value = 'Widget Engine Save Test';
+      const engineSelect = container.querySelector('#pm-engine') as HTMLSelectElement;
+      engineSelect.value = 'pyodide-widget';
+      engineSelect.dispatchEvent(new Event('change'));
+
+      const saveBtn = container.querySelector('#pm-btn-save') as HTMLElement;
+      saveBtn.click();
+
+      await vi.waitFor(() => {
+        expect(savedBody).not.toBeNull();
+      });
+
+      expect(savedBody.engine).toBe('pyodide-widget');
+    });
+  });
+
+  // ---- 4.6 Import / Export ----
+
   describe('import / export', () => {
     it('export creates download link for selected problem', async () => {
       const createObjectURLMock = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');

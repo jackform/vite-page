@@ -210,3 +210,185 @@ describe('listProblems', () => {
     }
   });
 });
+
+describe('engine field', () => {
+  const testId = `__vitest_engine_${Date.now()}`;
+
+  afterAll(() => {
+    if (hasProblem(testId)) {
+      deleteProblem(testId);
+    }
+  });
+
+  it('createProblem defaults engine to pyodide when not specified', () => {
+    const problem: Problem = {
+      id: testId,
+      title: 'Engine Default Test',
+      difficulty: 'easy',
+      category: 'testing',
+      tags: [],
+      description: 'Testing engine default.',
+      examples: [],
+      constraints: [],
+      starterCode: 'pass',
+      testCases: [],
+      author: 'vitest',
+      file: '',
+      createdAt: '',
+      updatedAt: '',
+    };
+
+    const created = createProblem(problem);
+    // Index metadata should default engine to 'pyodide'
+    const all = listProblems();
+    const found = all.find((p) => p.id === testId);
+    expect(found).toBeDefined();
+    expect(found!.engine).toBe('pyodide');
+  });
+
+  it('createProblem preserves custom engine in index metadata', () => {
+    const customId = `${testId}-skulpt`;
+    // Clean up at the end
+    const cleanup = () => {
+      if (hasProblem(customId)) deleteProblem(customId);
+    };
+
+    const problem: Problem = {
+      id: customId,
+      title: 'Skulpt Engine Test',
+      difficulty: 'easy',
+      category: 'testing',
+      tags: [],
+      description: 'Testing skulpt engine.',
+      examples: [],
+      constraints: [],
+      starterCode: 'import turtle',
+      testCases: [],
+      author: 'vitest',
+      file: '',
+      createdAt: '',
+      updatedAt: '',
+      // Simulate engine field being sent from frontend
+      engine: 'skulpt' as any,
+    } as Problem;
+
+    try {
+      const created = createProblem(problem);
+      const all = listProblems();
+      const found = all.find((p) => p.id === customId);
+      expect(found).toBeDefined();
+      expect(found!.engine).toBe('skulpt');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('createProblem preserves pyodide-widget engine in index metadata', () => {
+    const customId = `${testId}-widget`;
+    const cleanup = () => {
+      if (hasProblem(customId)) deleteProblem(customId);
+    };
+
+    const problem: Problem = {
+      id: customId,
+      title: 'Widget Engine Test',
+      difficulty: 'easy',
+      category: 'testing',
+      tags: [],
+      description: 'Testing widget engine.',
+      examples: [],
+      constraints: [],
+      starterCode: 'from tkinter import *',
+      testCases: [],
+      author: 'vitest',
+      file: '',
+      createdAt: '',
+      updatedAt: '',
+      engine: 'pyodide-widget' as any,
+    } as Problem;
+
+    try {
+      createProblem(problem);
+      const all = listProblems();
+      const found = all.find((p) => p.id === customId);
+      expect(found).toBeDefined();
+      expect(found!.engine).toBe('pyodide-widget');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('updateProblem preserves existing engine when not in updates', () => {
+    const customId = `${testId}-update-preserve`;
+    const cleanup = () => {
+      if (hasProblem(customId)) deleteProblem(customId);
+    };
+
+    const problem: Problem = {
+      id: customId,
+      title: 'Preserve Engine',
+      difficulty: 'easy',
+      category: 'testing',
+      tags: [],
+      description: 'Testing engine preservation.',
+      examples: [],
+      constraints: [],
+      starterCode: 'pass',
+      testCases: [],
+      author: 'vitest',
+      file: '',
+      createdAt: '',
+      updatedAt: '',
+      engine: 'skulpt' as any,
+    } as Problem;
+
+    try {
+      createProblem(problem);
+      // Update only title, don't touch engine
+      updateProblem(customId, { title: 'Preserved Engine Title' });
+
+      const all = listProblems();
+      const found = all.find((p) => p.id === customId);
+      expect(found).toBeDefined();
+      expect(found!.title).toBe('Preserved Engine Title');
+      expect(found!.engine).toBe('skulpt');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('full problem detail from getProblem includes engine field', () => {
+    const customId = `${testId}-get-detail`;
+    const cleanup = () => {
+      if (hasProblem(customId)) deleteProblem(customId);
+    };
+
+    const problem: Problem = {
+      id: customId,
+      title: 'Get Detail Engine',
+      difficulty: 'easy',
+      category: 'testing',
+      tags: [],
+      description: 'Testing getProblem includes engine.',
+      examples: [],
+      constraints: [],
+      starterCode: 'pass',
+      testCases: [],
+      author: 'vitest',
+      file: '',
+      createdAt: '',
+      updatedAt: '',
+      engine: 'skulpt' as any,
+    } as Problem;
+
+    try {
+      createProblem(problem);
+      const detail = getProblem(customId);
+      expect(detail).not.toBeNull();
+      // The full problem detail file should include the engine field
+      expect((detail as any).engine).toBe('skulpt');
+    } finally {
+      cleanup();
+    }
+  });
+});
