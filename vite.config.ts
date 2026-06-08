@@ -18,7 +18,8 @@ export default defineConfig({
     outDir: 'dist',
     rollupOptions: {
       input: {
-        main: resolve(__dirname, 'index.html'),
+        index: resolve(__dirname, 'index.html'),
+        main: resolve(__dirname, 'profile.html'),
         poster: resolve(__dirname, 'poster.html'),
         code: resolve(__dirname, 'code.html'),
         teacher: resolve(__dirname, 'teacher.html'),

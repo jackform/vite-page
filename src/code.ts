@@ -113,7 +113,7 @@ function updateThemeButton(): void {
 function renderLayout(): string {
   return `
     <nav class="code-nav">
-      <a href="./">← 返回個人主頁</a>
+      <a href="./profile.html">← 返回個人主頁</a>
       <span class="code-nav-title">Python 程式設計實驗室</span>
       <span class="code-nav-mode hidden" id="nav-mode-badge">自由練習</span>
       <div class="code-nav-right">
