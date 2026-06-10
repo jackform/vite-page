@@ -180,15 +180,73 @@
             margin-bottom: 1rem;
         }
 
-        /* Contact Section */
-        .contact {
+        /* Consulting Section */
+        .consulting {
             background-color: #f8f9fa;
         }
 
-        .contact-content {
+        .consulting-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 3rem;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .consulting-card {
+            background-color: #ffffff;
+            padding: 2rem;
+            border-radius: 10px;
+            border: 1px solid #e9ecef;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .consulting-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .consulting-card h3 {
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            color: #1a1a2e;
+        }
+
+        .consulting-card p {
+            color: #4a4a6a;
+            font-size: 0.95rem;
+        }
+
+        .consulting-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .consulting-card ul {
+            list-style: none;
+            padding: 0;
+            margin-top: 0.75rem;
+        }
+
+        .consulting-card ul li {
+            padding: 0.3rem 0;
+            color: #4a4a6a;
+            font-size: 0.95rem;
+        }
+
+        .consulting-card ul li::before {
+            content: "✦ ";
+            color: #0066cc;
+            font-weight: bold;
+        }
+
+        /* Contact Section */
+        .contact {
+            background-color: #ffffff;
+        }
+
+        .contact-content {
+            max-width: 700px;
+            margin: 0 auto;
+            text-align: center;
         }
 
         .contact-info h3 {
@@ -199,56 +257,6 @@
         .contact-info p {
             color: #4a4a6a;
             margin-bottom: 0.5rem;
-        }
-
-        .contact-form {
-            background-color: #ffffff;
-            padding: 2rem;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-            color: #1a1a2e;
-        }
-
-        .form-group input,
-        .form-group textarea {
-            width: 100%;
-            padding: 0.75rem;
-            border: 1px solid #ced4da;
-            border-radius: 5px;
-            font-family: inherit;
-            font-size: 1rem;
-        }
-
-        .form-group textarea {
-            resize: vertical;
-            min-height: 120px;
-        }
-
-        .submit-button {
-            width: 100%;
-            padding: 1rem;
-            background-color: #0066cc;
-            color: #ffffff;
-            border: none;
-            border-radius: 5px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-
-        .submit-button:hover {
-            background-color: #0052a3;
         }
 
         /* Footer */
@@ -277,12 +285,8 @@
                 font-size: 2rem;
             }
 
-            .about-content,
-            .contact-content {
-                grid-template-columns: 1fr;
-            }
-
-            .services-grid {
+            .services-grid,
+            .consulting-grid {
                 grid-template-columns: 1fr;
             }
         }
@@ -297,6 +301,7 @@
                 <li><a href="#home">Home</a></li>
                 <li><a href="#about">About</a></li>
                 <li><a href="#services">Services</a></li>
+                <li><a href="#consulting">Consulting</a></li>
                 <li><a href="#contact">Contact</a></li>
             </ul>
             <div class="mobile-menu">☰</div>
@@ -360,6 +365,45 @@
                 <div class="service-icon">🚀</div>
                 <h3>AI Model and Algorithm - Senior</h3>
                 <p>Cutting-edge AI training covering advanced neural architectures, transformer models, reinforcement learning, and model deployment strategies for real-world applications.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Consulting Section -->
+    <section class="consulting" id="consulting">
+        <h2 class="section-title">AI Education & Consulting</h2>
+        <div class="consulting-grid">
+            <div class="consulting-card">
+                <div class="consulting-icon">🏆</div>
+                <h3>Informatics Competition Training</h3>
+                <p>Comprehensive coaching programs designed to help students excel in prestigious informatics competitions and build strong algorithmic thinking skills.</p>
+                <ul>
+                    <li>USACO (USA Computing Olympiad)</li>
+                    <li>ACM-ICPC (International Collegiate Programming Contest)</li>
+                    <li>National & International Informatics Olympiads</li>
+                </ul>
+            </div>
+
+            <div class="consulting-card">
+                <div class="consulting-icon">💼</div>
+                <h3>AI Career Consulting</h3>
+                <p>Expert guidance for professionals targeting AI-related roles in the industry. From resume optimization to interview preparation, we help you land your dream AI position.</p>
+                <ul>
+                    <li>AI job market insights and career planning</li>
+                    <li>Resume and portfolio optimization</li>
+                    <li>Technical interview preparation and mock sessions</li>
+                </ul>
+            </div>
+
+            <div class="consulting-card">
+                <div class="consulting-icon">🔬</div>
+                <h3>AI Cross-Disciplinary Research Consulting</h3>
+                <p>Strategic consulting for researchers and institutions seeking to leverage AI as a cross-disciplinary enabler for innovation and breakthrough discoveries.</p>
+                <ul>
+                    <li>AI integration into academic research workflows</li>
+                    <li>Cross-domain AI application strategies</li>
+                    <li>Research project planning and methodology design</li>
+                </ul>
             </div>
         </div>
     </section>
